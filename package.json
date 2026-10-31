@@ -1,0 +1,60 @@
+{
+  "name": "open-crosshairq",
+  "version": "0.1.0",
+  "description": "OpenCrosshairQ — crosshair overlay open-source, gratuita e offline-first",
+  "author": "OpenCrosshairQ Team",
+  "main": "src/main/main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.mjs",
+    "test:electron": "electron test/electron-smoke.cjs",
+    "build:native": "powershell -NoProfile -ExecutionPolicy Bypass -File native/build.ps1",
+    "test:native": "electron test/native-smoke.cjs",
+    "test:foreground": "electron test/foreground-electron.cjs",
+    "test:shortcut": "electron test/shortcut-physical.cjs",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.opencrosshairq.app",
+    "productName": "OpenCrosshairQ",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "native/build/crosshairq.node",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "native/build/crosshairq.node"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OpenCrosshairQ",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "artifactName": "OpenCrosshairQ-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "OpenCrosshairQ-Portable.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  }
+}

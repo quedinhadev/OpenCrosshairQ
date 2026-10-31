@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'">
+  <title>OpenCrosshairQ</title>
+  <style>
+    :root {
+      --bg: #0E1013;
+      --bg-2: #12151A;
+      --panel: #15181D;
+      --panel-2: #1B1F26;
+      --bar: rgba(0, 0, 0, .25);
+      --line: rgba(255, 255, 255, .08);
+      --line-2: rgba(255, 255, 255, .045);
+      --txt: #9AA5B4;
+      --orange: var(--accent);
+      --orange-soft: var(--accent-soft);
+      --orange-border: rgba(47, 107, 255, .55);
+      --title: #E8ECF2;
+      --text: #E8ECF2;
+      --text-2: #9AA5B4;
+      --text-3: #6C7684;
+      --dim: rgba(255, 255, 255, .45);
+      --dim-2: rgba(255, 255, 255, .7);
+      --accent: #2F6BFF;
+      --accent-hi: #4C82FF;
+      --accent-lo: #2456D6;
+      --accent-soft: rgba(47, 107, 255, .16);
+      --accent-glow: rgba(47, 107, 255, .30);
+      --danger: #E5484D;
+      --green: #2fc787;
+      --blue: #67c1f5;
+      --red: #ef4444;
+      --purple: #a855f7;
+      --font: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+      --head: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+      --r: 8px;
+      --motion-dur-hover: 100ms;
+      --motion-dur-press: 130ms;
+      --motion-dur-modal: 200ms;
+      --motion-ease-std: cubic-bezier(0.2, 0, 0, 1);
+      --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font: 13px/1.5 var(--font);
+      background: var(--bg); color: var(--txt);
+      overflow: hidden; -webkit-user-select: none; user-select: none;
+    }
+    input, select, textarea, button { font-family: inherit; }
+    button { cursor: pointer; }
+    svg { display: block; }
+    .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+    .ico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .ico.lg { width: 18px; height: 18px; }
+    .ico.xl { width: 24px; height: 24px; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
+
+    /* ---------- Titlebar ---------- */
+    .topbar {
+      height: 50px; display: flex; align-items: center; gap: 10px;
+      padding: 0 0 0 10px; background: var(--bg); position: relative; z-index: 30;
+      -webkit-app-region: drag;
+    }
+    .topbar button, .topbar .power, .topbar .profile-chip, .topbar .vis-wrap, .topbar .wincontrols { -webkit-app-region: no-drag; }
+    .brand { display: flex; align-items: center; gap: 9px; padding: 0 2px; min-width: 138px; flex: none; }
+    .brand-logo { width: 34px; height: 34px; }
+    .brand-text { font-family: var(--head); font-weight: 800; font-size: 16px; letter-spacing: -.2px; color: #f3f3f3; }
+    .brand-text b { color: var(--accent); font-weight: 800; }
+    .topbar-spacer { flex: 1; min-width: 0; }
+    .profile-chip {
+      flex: none; height: 34px; min-width: 140px; display: flex; align-items: center; gap: 10px;
+      padding: 0 14px; border: 0; border-radius: 8px;
+      background: rgba(255, 255, 255, .04); color: #c7d1db; font-size: 13px; font-weight: 500;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .profile-chip:hover { background: rgba(255, 255, 255, .07); }
+    .profile-chip:active { transform: scale(0.98); }
+    .profile-chip .ico { width: 14px; height: 14px; color: var(--accent); }
+    .profile-chip .chev { width: 12px; height: 12px; margin-left: auto; color: #8a8a8a; }
+    .vis-wrap { position: relative; display: flex; align-items: center; gap: 8px; padding: 0; margin-left: 29px; flex: none; }
+    .vis-wrap::before { content: ''; position: absolute; left: -19px; top: 8px; bottom: 8px; width: 1px; background: rgba(255, 255, 255, .08); }
+    .vis-preview {
+      width: 34px; height: 34px; border-radius: 6px; background: #101010;
+      border: 1px solid rgba(0, 0, 0, .55); display: grid; place-items: center; overflow: hidden;
+    }
+    .vis-preview svg { width: 26px; height: 26px; }
+    .power { position: relative; display: inline-block; width: 58px; height: 34px; }
+    .power input { position: absolute; opacity: 0; pointer-events: none; }
+    .power-track {
+      display: block; width: 58px; height: 34px; border-radius: 34px;
+      background: #2a2a2a; transition: background .16s ease; position: relative;
+    }
+    .power-knob {
+      position: absolute; top: 4px; left: 4px; width: 26px; height: 26px; border-radius: 50%;
+      background: #1c1c1c; display: grid; place-items: center; color: #8a8a8a;
+      transition: left .16s ease, color .16s ease, background .16s ease;
+    }
+    .power-knob .ico { width: 14px; height: 14px; }
+    .power input:checked + .power-track { background: var(--accent-soft); }
+    .power:focus-within .power-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .power input:checked + .power-track .power-knob { left: 28px; color: #4C82FF; background: #202020; }
+    .wincontrols { display: flex; height: 50px; margin-left: 8px; border-left: 1px solid rgba(255, 255, 255, .08); flex: none; }
+    .winbtn {
+      width: 46px; height: 50px; border: 0; background: transparent; color: #9a9a9a;
+      display: grid; place-items: center;
+      transition: background-color 80ms var(--motion-ease-std), color 80ms var(--motion-ease-std);
+    }
+    .winbtn:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+    .winbtn:active { background: rgba(255, 255, 255, .12); }
+    .winbtn.close:hover { background: #c42b1c; color: #fff; }
+    .winbtn.close:active { background: #b22517; }
+    .winbtn svg { width: 12px; height: 12px; stroke-width: 1.4; }
+
+    /* ---------- Shell ---------- */
+    .app { display: flex; height: calc(100% - 50px); }
+    .sidebar {
+      width: 161px; flex: none; background: var(--bg); border-right: 1px solid rgba(255, 255, 255, .055);
+      padding: 8px 8px 12px 9px; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .side-nav { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; }
+    .nav-item {
+      width: 100%; height: 32px; display: flex; align-items: center; gap: 14px;
+      padding: 0 7px 0 9px; border: 0; border-radius: 8px; background: transparent;
+      color: rgba(255, 255, 255, .6); font-size: 12px; font-weight: 500; text-align: left;
+      white-space: nowrap; overflow: hidden;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), transform 120ms var(--motion-ease-out);
+    }
+    .nav-item .ico { width: 15px; height: 15px; color: #616161; flex: none; transition: color var(--motion-dur-hover) var(--motion-ease-std); }
+    .nav-item:hover { background: rgba(255, 255, 255, .045); color: rgba(255, 255, 255, .82); }
+    .nav-item:active { transform: scale(0.98); }
+    .nav-item.active { background: rgba(255, 255, 255, .08); color: #fff; }
+    .nav-item.active .ico { color: var(--accent); }
+    .nav-item.menu-toggle { color: rgba(255, 255, 255, .55); margin-bottom: 4px; }
+    .side-gap { flex: 1; min-height: 18px; }
+    body.menu-collapsed .sidebar { width: 52px; padding-left: 8px; padding-right: 8px; }
+    body.menu-collapsed .nav-item { justify-content: center; padding: 0; }
+    body.menu-collapsed .nav-item span { display: none; }
+    body.menu-collapsed .nav-item .ico { width: 17px; height: 17px; }
+
+    .content { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; position: relative; background: var(--bg); }
+    .page { display: none; }
+    .page.on { display: block; }
+    .page-pad { padding: 20px 24px 80px; }
+
+    /* ---------- Shared controls ---------- */
+    .btn {
+      height: 32px; padding: 0 12px; border-radius: 5px; border: 1px solid var(--line);
+      background: var(--panel); color: #d0d0d0; font-size: 12px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), border-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), box-shadow var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .btn:hover { background: #2d2d2d; }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .btn.primary { background: var(--accent-soft); border-color: rgba(47,107,255,.55); color: var(--accent); }
+    .btn.primary:hover { background: rgba(47, 107, 255, .22); }
+    .btn.danger { color: #ff8a80; border-color: rgba(239, 68, 68, .3); background: rgba(239, 68, 68, .08); }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .icon-btn {
+      width: 32px; height: 32px; border-radius: 5px; border: 1px solid var(--line-2);
+      background: transparent; color: #a0a0a0; display: grid; place-items: center;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), border-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .icon-btn:hover { background: var(--panel); color: #ddd; }
+    .icon-btn:active:not(:disabled) { transform: scale(0.92); }
+    .switch { position: relative; width: 32px; height: 18px; display: inline-block; flex: none; }
+    .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .switch i {
+      position: absolute; inset: 0; border-radius: 18px; background: #3a3a3a;
+      transition: background .15s ease;
+    }
+    .switch i::after {
+      content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%;
+      background: #fff; top: 2px; left: 2px; transition: left .15s ease;
+    }
+    .switch input:checked + i { background: var(--green); }
+    .switch input:checked + i::after { left: 16px; }
+    .switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .seg { display: inline-flex; height: 32px; background: #202020; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+    .seg button {
+      border: 0; background: transparent; color: #8f8f8f; font-size: 10px; font-weight: 700;
+      letter-spacing: .3px; padding: 0 15px;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), box-shadow var(--motion-dur-hover) var(--motion-ease-std);
+    }
+    .seg button.active { background: rgba(47, 107, 255, .18); color: var(--accent); box-shadow: inset 0 0 0 1px rgba(47, 107, 255, .45); }
+    .seg button:hover:not(.active) { color: #ccc; }
+    .select, .number {
+      height: 32px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, .09);
+      background: #242424; color: #d5d5d5; font-size: 12px; padding: 0 10px;
+    }
+    .select { min-width: 130px; }
+    input[type=range] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0;
+    }
+    input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 6px; background: linear-gradient(to right, rgba(47, 107, 255, .8) var(--fill, 0%), #e9e9e9 var(--fill, 0%)); }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+      margin-top: -5px; border: 0;
+    }
+    .muted { color: var(--dim); }
+    .tiny { font-size: 11px; letter-spacing: .5px; text-transform: uppercase; color: #8a8a8a; font-weight: 700; }
+    .toast {
+      position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(12px);
+      background: #2a2a2a; color: #e8e8e8; border: 1px solid rgba(255, 255, 255, .1);
+      border-radius: 6px; padding: 9px 14px; font-size: 12px; opacity: 0; pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease; z-index: 100; max-width: 70vw;
+    }
+    .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ---------- Crosshairs / Descobrir ---------- */
+    .x-tabs {
+      height: 42px; display: flex; align-items: stretch; gap: 0;
+      padding: 0 20px 0 0; border-bottom: 1px solid var(--line);
+    }
+    .xtab {
+      display: flex; align-items: center; gap: 8px; border: 0; background: transparent;
+      color: rgba(255, 255, 255, .7); font-size: 13px; font-weight: 400; padding: 0 20px; position: relative;
+      border-radius: 6px 0 0;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std);
+    }
+    .xtab .ico { width: 14px; height: 14px; }
+    .xtab:hover { background: rgba(255, 255, 255, .03); color: #ddd; }
+    .xtab.active { color: var(--accent); font-weight: 400; background: rgba(255, 255, 255, .06); }
+    .xtab::after {
+      content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent);
+      border-radius: 0; opacity: 0; transform: scaleX(0); transform-origin: center;
+      transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+    }
+    .xtab.active::after { opacity: 1; transform: scaleX(1); }
+    .xtab .count { font-size: 10px; color: #7a7a7a; margin-left: 2px; }
+    .x-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .x-action {
+      height: 30px; padding: 0 8px; border: 0; background: transparent; color: #a8a8a8;
+      font-size: 11.5px; display: flex; align-items: center; gap: 6px; border-radius: 4px;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .x-action:hover { background: rgba(255, 255, 255, .05); color: #ddd; }
+    .x-action:active { transform: scale(0.96); }
+    .x-body { padding: 24px 28px 60px; }
+    .x-hero {
+      height: 180px; border-radius: 8px; overflow: hidden; position: relative;
+      display: flex; align-items: center; justify-content: center; gap: 20px;
+      background:
+        radial-gradient(520px 320px at 9% 48%, rgba(47, 107, 255, .10), transparent 66%),
+        radial-gradient(560px 340px at 82% 112%, rgba(47, 107, 255, .045), transparent 70%),
+        #181818;
+      border: 1px solid rgba(255, 255, 255, .025);
+    }
+    .x-hero::before {
+      content: ''; position: absolute; width: 300px; height: 300px; border-radius: 50%;
+      border: 40px solid rgba(255, 255, 255, .014); left: -80px; top: -110px;
+    }
+    .x-hero-logo { width: 64px; height: 64px; flex: none; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, .5)); }
+    .x-hero h2 { margin: 0 0 6px; font-family: var(--head); font-size: 20px; font-weight: 600; color: var(--title); }
+    .x-hero p { margin: 0; font-size: 13px; color: rgba(255, 255, 255, .55); }
+    .x-dots { height: 20px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 28px; }
+    .x-dot { width: 7px; height: 7px; border-radius: 50%; border: 0; padding: 0; background: #4a4a4a; }
+    .x-dot.active { background: #7b8cff; box-shadow: 0 0 0 2px rgba(123, 140, 255, .18); }
+    .quick-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
+    .quick {
+      height: 46px; border-radius: 6px; border: 1px solid var(--line-2); background: #242424;
+      color: #c9c9c9; font-size: 12px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), border-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .quick .ico { width: 15px; height: 15px; color: #9a9a9a; }
+    .quick:hover { background: #2a2a2a; }
+    .quick:active { transform: scale(0.98); }
+    .quick.hl { background: #202a38; border-color: #2f4e77; color: #d7e6ff; }
+    .quick.hl .ico { color: #6ba6ff; }
+    [hidden] { display: none !important; }
+    .bento-top { display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 28px; }
+    .bento-card { min-height: 180px; background: #212121; border: 1px solid rgba(255, 255, 255, .035); border-radius: 6px; position: relative; overflow: hidden; }
+    .card-chip {
+      position: absolute; top: 12px; left: 12px; height: 24px; display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .04); border-radius: 5px;
+      padding: 0 8px; font-size: 9.5px; font-weight: 700; letter-spacing: .7px; color: #cfcfcf;
+    }
+    .card-chip .ico { width: 11px; height: 11px; color: #d7b21a; }
+    .pick-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #4f4f4f; }
+    .pick-empty .ico { width: 34px; height: 34px; color: #3a3a3a; }
+    .pick-empty span { font-size: 11px; }
+    .cont-preview { position: absolute; left: 0; right: 0; top: 26px; bottom: 42px; display: grid; place-items: center; }
+    .cont-preview svg { width: 70px; height: 70px; }
+    .cont-meta { position: absolute; left: 14px; bottom: 12px; }
+    .cont-name { font-size: 12.5px; font-weight: 600; color: #dcdcdc; }
+    .cont-sub { font-size: 10.5px; color: rgba(255, 255, 255, .38); }
+    .cont-actions { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; }
+    .cont-actions .icon-btn { width: 26px; height: 26px; background: #2a2a2a; border: 0; }
+    .cont-actions .ico { width: 12px; height: 12px; }
+    .cont-dots { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+    .cont-dots i { width: 6px; height: 6px; border-radius: 50%; background: #4a4a4a; }
+    .cont-dots i.on { background: #9a9a9a; }
+    .creator {
+      background: #242424; border: 1px solid var(--line-2); border-radius: 12px;
+      padding: 10px 20px 16px; display: grid; grid-template-columns: minmax(0, 1fr) 472px;
+      grid-template-rows: auto 1fr; column-gap: 20px; row-gap: 16px; margin-bottom: 28px; position: relative;
+    }
+    .creator > .card-chip { grid-column: 1; grid-row: 1; position: static; justify-self: start; align-self: start; margin: 0; }
+    .creator-left { grid-column: 1; grid-row: 2; padding: 0; display: grid; grid-template-columns: 56px minmax(0, 1fr); column-gap: 12px; align-items: start; }
+    .creator-avatar { grid-column: 1; grid-row: 1 / span 2; width: 56px; height: 56px; border-radius: 50%; background: #1c1c1c; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); }
+    .creator-avatar svg { width: 48px; height: 48px; }
+    .creator-name { grid-column: 2; grid-row: 1; font-size: 17px; font-weight: 700; color: rgba(255, 255, 255, .95); display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+    .creator-name .ico { width: 15px; height: 15px; color: #f5c341; fill: #f5c341; stroke: none; }
+    .creator-tag { grid-column: 2; grid-row: 2; font-size: 12px; color: rgba(255, 255, 255, .5); margin-top: 2px; line-height: 1.45; }
+    .creator-socials { grid-column: 1 / -1; grid-row: 3; display: flex; gap: 6px; margin-top: 16px; flex-wrap: wrap; }
+    .csocial {
+      height: 32px; border-radius: 7px; border: 0; color: #fff; font-size: 11px; font-weight: 600;
+      display: inline-flex; align-items: center; gap: 7px; padding: 0 12px;
+    }
+    .csocial .ico { width: 13px; height: 13px; }
+    .csocial.tw { background: #9146ff; } .csocial.yt { background: #d92117; } .csocial.x { background: #e7e9ea; color: #0f1419; }
+    .csocial.ds { background: #4752c4; }
+    .creator-cards { grid-column: 2; grid-row: 1 / span 2; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-content: start; }
+    .mod-card { background: #242424; border: 1px solid rgba(255, 255, 255, .035); border-radius: 10px; overflow: hidden; position: relative; display: flex; flex-direction: column; min-height: 150px; }
+    .mod-card-media { flex: none; height: 112px; display: grid; place-items: center; background: radial-gradient(circle at 50% 42%, rgba(255, 255, 255, .03), transparent 62%); position: relative; }
+    .mod-card-preview { width: 56px; height: 56px; }
+    .mod-card-save { position: absolute; top: 7px; right: 7px; width: 28px; height: 28px; border: 0; background: transparent; color: #8a8a8a; display: grid; place-items: center; border-radius: 50%; }
+    .mod-card-save .ico { width: 13px; height: 13px; }
+    .mod-card-save.on { color: var(--accent); }
+    .mod-card-strip {
+      height: 52px; border-top: 0; background: transparent;
+      display: flex; align-items: center; gap: 8px; padding: 18px 14px 8px; font-size: 12px; font-weight: 500; color: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .mod-card-strip .ico { width: 24px; height: 24px; padding: 5px; border-radius: 6px; background: rgba(165, 137, 216, .18); color: #a589d8; flex: none; }
+    .mod-card-name { overflow: hidden; text-overflow: ellipsis; }
+    .mod-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .grid-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+    .grid-head h3 { margin: 0; font-family: var(--head); font-size: 13px; font-weight: 600; color: #cfcfcf; }
+    .grid-head .rule { flex: 1; height: 1px; background: var(--line); }
+    .browse-panel { max-width: 900px; }
+    .browse-note { font-size: 11px; color: var(--dim); margin: 0 0 14px; }
+    .empty-state { padding: 46px 20px; text-align: center; color: #6f6f6f; font-size: 12px; border: 1px dashed rgba(255, 255, 255, .08); border-radius: 8px; }
+
+    /* ---------- Positions ---------- */
+    .pos-page { padding: 10px 24px 60px; max-width: 632px; }
+    .pos-title { font-family: var(--head); font-size: 16px; font-weight: 500; color: var(--title); margin: 0 0 3px; }
+    .pos-desc { font-size: 12px; color: rgba(255, 255, 255, .45); margin: 0 0 16px; line-height: 1.45; }
+    .pos-row { display: grid; grid-template-columns: 75px 76px minmax(0, 1fr) 104px; align-items: center; gap: 0; min-height: 36px; }
+    .pos-label { display: flex; align-items: center; gap: 8px; width: 75px; padding-right: 12px; font-size: 14px; color: rgba(255, 255, 255, .5); }
+    .pos-label .ico { width: 14px; height: 14px; color: #9a9a9a; flex: none; }
+    .pos-input {
+      width: 60px; height: 36px; margin-left: 16px; border: 0; border-bottom: 1px solid rgba(255, 255, 255, .22);
+      background: transparent; color: #e2e2e2; font-size: 13px; text-align: center; outline: none;
+    }
+    .pos-input:focus { border-bottom-color: var(--accent); }
+    input[type=range].pos-slider { width: calc(100% - 54px); margin: 0 30px 0 24px; padding: 0; }
+    .pos-stepper { width: 104px; display: flex; gap: 1px; justify-self: end; }
+    .pos-stepper button {
+      width: 34px; height: 32px; border: 0; background: #242424; color: #b0b0b0;
+      display: grid; place-items: center;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .pos-stepper button:first-child { border-radius: 4px 0 0 4px; }
+    .pos-stepper button:last-child { border-radius: 0 4px 4px 0; }
+    .pos-stepper button:hover { background: #2f2f2f; color: #fff; }
+    .pos-stepper button:active { transform: scale(0.94); }
+    .pos-stepper .ico { width: 12px; height: 12px; }
+    .divider { height: 1px; background: var(--line); margin: 32px 0; }
+    .shortcut-strip {
+      margin: 16px 0 0; height: 60px; display: flex; align-items: center; gap: 8px;
+      border: 1px solid var(--line); border-radius: 8px; padding: 0 16px; background: rgba(255, 255, 255, .015);
+    }
+    .shortcut-label { font-size: 11px; font-weight: 500; letter-spacing: .3px; color: rgba(255, 255, 255, .35); margin-right: 4px; }
+    .keycap {
+      min-width: 24px; height: 24px; padding: 0 6px; border-radius: 4px; background: #2b2b2b;
+      color: #b9b9b9; font-size: 11px; display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid rgba(255, 255, 255, .03);
+    }
+    .shortcut-strip .seg { margin-left: auto; height: 32px; }
+    .shortcut-strip[data-shortcut="position"] { height: 66px; }
+    .shortcut-strip[data-shortcut="position"] .seg { height: 40px; }
+    .pos-foot { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 3px; }
+    .pos-foot input {
+      height: 36px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, .09);
+      background: #1f1f1f; color: #ddd; font-size: 12px; padding: 0 13px; outline: none;
+    }
+    .pos-foot input:focus { border-color: rgba(47,107,255,.55); }
+    .save-pos {
+      width: 40px; height: 36px; border-radius: 4px; border: 1px solid rgba(47,107,255,.55);
+      background: transparent; color: var(--accent); display: grid; place-items: center;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .save-pos:hover { background: var(--accent-soft); }
+    .save-pos:active { transform: scale(0.94); }
+    .saved-list { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+    .saved-item { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; background: #212121; border-radius: 4px; font-size: 11.5px; }
+    .saved-item .grow { flex: 1; color: #cfcfcf; }
+    .saved-item .muted { font-size: 10.5px; }
+    .saved-item button { border: 0; background: transparent; color: #8a8a8a; }
+    .saved-item button:hover { color: #ff8a80; }
+    .dpad { width: 104px; height: 104px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 3px; justify-self: end; }
+    .dpad button {
+      border: 0; background: #242424; border-radius: 4px; color: #b3b3b3; display: grid; place-items: center;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .dpad button:hover { background: #2f2f2f; color: #fff; }
+    .dpad button:not(.center):active { transform: scale(0.94); }
+    .dpad .ico { width: 13px; height: 13px; }
+    .dpad .center { background: transparent; color: #666; pointer-events: none; }
+    .dpad .center i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #555; display: block; }
+    .dpad .up { grid-column: 2; grid-row: 1; } .dpad .left { grid-column: 1; grid-row: 2; }
+    .dpad .center { grid-column: 2; grid-row: 2; } .dpad .right { grid-column: 3; grid-row: 2; }
+    .dpad .down { grid-column: 2; grid-row: 3; }
+    .pos-position-grid { display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 24px; align-items: center; }
+    .pos-position-grid .pos-rows { display: flex; flex-direction: column; gap: 16px; }
+    .pos-position-grid .pos-row { grid-template-columns: 70px 76px minmax(0, 1fr); gap: 0; }
+    .pos-position-grid .pos-label { width: 70px; }
+    .pos-position-grid input[type=range].pos-slider { width: calc(100% - 30px); margin: 0 6px 0 24px; }
+    .pos-position-grid .pos-stepper { display: none; }
+    .pos-hint { display: none; }
+
+    /* ---------- Keybinds ---------- */
+    .kb-page { padding: 20px 24px 80px; }
+    .kb-title { font-family: var(--head); font-size: 18px; font-weight: 600; color: #d1d1d1; margin: 0 0 4px; }
+    .kb-desc { font-size: 13px; line-height: 1.5; color: rgba(255, 255, 255, .42); margin: 0 0 28px; }
+    .kb-section { margin-bottom: 32px; }
+    .kb-section-title { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; letter-spacing: .5px; color: #cfcfcf; margin: 0 0 12px; text-transform: uppercase; }
+    .kb-section-title .ico { width: 12px; height: 12px; color: #8f8f8f; }
+    .kb-card { background: #1c1c1c; border: 1px solid rgba(255, 255, 255, .06); border-radius: 8px; overflow: hidden; }
+    .kb-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .kb-table th {
+      height: 51px; text-align: left; font-size: 10px; font-weight: 700; letter-spacing: .6px; color: #8a8a8a;
+      padding: 0 20px; background: rgba(0, 0, 0, .2); vertical-align: middle;
+      border-bottom: 1px solid rgba(255, 255, 255, .07);
+    }
+    .kb-table th.c { text-align: center; padding: 0; }
+    .kb-table th:first-child { width: 50.6%; }
+    .kb-table th:nth-child(2), .kb-table td:nth-child(2) { width: 24.7%; border-left: 1px solid rgba(255, 255, 255, .07); }
+    .kb-table th:nth-child(3), .kb-table td:nth-child(3) { width: 24.7%; border-left: 1px solid rgba(255, 255, 255, .07); }
+    .kb-table td { height: 55px; padding: 10px 16px; border-bottom: 1px solid rgba(255, 255, 255, .06); vertical-align: middle; }
+    .kb-table tbody tr:last-child td { border-bottom: 0; }
+    #keybindList tr:nth-child(2) td { height: 63px; }
+    #keybindList tr:last-child td { height: 57px; }
+    .kb-table td.c { padding: 10px 16px; text-align: left; }
+    .kb-action { display: flex; align-items: center; gap: 16px; }
+    .kb-name { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #d0d0d0; flex: none; }
+    .kb-name .ico, .kb-ico { width: 14px; height: 14px; color: #8f8f8f; flex: none; }
+    .kb-sub { margin-left: auto; width: 440px; max-width: calc(100% - 100px); height: 28px; background: #242424; border: 1px solid var(--line); color: #a8a8a8; border-radius: 4px; font-size: 11px; padding: 0 7px; }
+    .kb-keys { display: flex; gap: 4px; align-items: center; min-height: 22px; }
+    .kb-plus { color: #6f6f6f; font-size: 10px; margin: 0 2px; }
+    .kb-cell { display: flex; align-items: center; gap: 10px; }
+    .kb-dev { width: 14px; height: 14px; color: #7a7a7a; flex: none; }
+    .kb-pad { color: #7a7a7a; font-size: 11px; }
+    .kb-toggle { margin-left: auto; display: inline-flex; height: 35px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255, 255, 255, .07); }
+    .kb-toggle button { border: 0; background: #242424; color: #8a8a8a; font-size: 9.5px; font-weight: 700; letter-spacing: .5px; padding: 0 12px; min-width: 70px; }
+    .kb-toggle button:last-child.on { background: rgba(47, 107, 255, .2); color: var(--accent); box-shadow: inset 0 0 0 1px rgba(47, 107, 255, .45); }
+    .kb-add { display: inline-flex; align-items: center; gap: 9px; height: 34px; border: 0; background: transparent; color: var(--accent); font-size: 13px; font-weight: 500; padding: 0; }
+    .kb-plus-tile { width: 34px; height: 34px; border-radius: 4px; background: #242424; display: grid; place-items: center; }
+    .kb-add .ico { width: 14px; height: 14px; }
+    .kb-note { font-size: 10.5px; color: rgba(255, 255, 255, .32); margin-top: 14px; }
+
+    /* ---------- Options / Settings ---------- */
+    .opt-tabs { height: 50px; display: flex; align-items: stretch; gap: 30px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+    .opt-tab {
+      display: flex; align-items: center; gap: 7px; min-width: 74px; border: 0; background: transparent; color: #9a9a9a;
+      font-size: 11.5px; font-weight: 600; position: relative; padding: 0 2px;
+      transition: color var(--motion-dur-hover) var(--motion-ease-std);
+    }
+    .opt-tab .ico { width: 14px; height: 14px; transition: color var(--motion-dur-hover) var(--motion-ease-std); }
+    .opt-tab::after {
+      content: ''; position: absolute; left: -8px; right: -8px; bottom: -1px; height: 2px; background: var(--accent);
+      opacity: 0; transform: scaleX(0); transform-origin: center;
+      transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+    }
+    .opt-tab.active { color: var(--accent); }
+    .opt-tab.active::after { opacity: 1; transform: scaleX(1); }
+    .settings-layout { display: grid; grid-template-columns: 220px minmax(0, 650px); gap: 25px; padding: 22px 28px 60px; align-items: start; }
+    .settings-sidebar { background: rgba(0, 0, 0, .15); border-radius: 4px; padding: 20px 12px 10px; }
+    .settings-sidebar h3 { margin: 0 6px 13px; display: flex; align-items: center; gap: 7px; font-family: var(--head); font-size: 11px; font-weight: 600; color: #d1d1d1; letter-spacing: .3px; }
+    .settings-sidebar h3 .ico { width: 12px; height: 12px; color: #8a8a8a; }
+    .settings-sidebar nav { display: flex; flex-direction: column; gap: 4px; }
+    .settings-filter {
+      height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 10px; border-radius: 8px;
+      border: 1px solid transparent; background: transparent; color: rgba(255, 255, 255, .6); font-size: 13px; font-weight: 500; text-align: left;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), border-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .settings-filter .ico { width: 18px; height: 18px; color: rgba(255, 255, 255, .5); flex: none; }
+    .settings-filter:hover { background: rgba(255, 255, 255, .04); color: #e0e0e0; }
+    .settings-filter:active { transform: scale(0.98); }
+    .settings-filter.active { background: rgba(47, 107, 255, .15); border-color: rgba(47, 107, 255, .9); color: #fff; }
+    .settings-filter.active .ico { color: var(--accent); }
+    .settings-main { display: flex; flex-direction: column; gap: 18px; min-width: 0; padding-top: 16px; }
+    .settings-cat { display: none; }
+    .settings-cat.on { display: block; }
+    .settings-cat-head { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; letter-spacing: .5px; color: #d1d1d1; margin: 0 0 7px; padding-left: 2px; }
+    .settings-cat-head .ico { width: 12px; height: 12px; color: #8f8f8f; }
+    .settings-section { background: #242424; border: 1px solid rgba(255, 255, 255, .055); border-radius: 10px; overflow: hidden; }
+    .settings-row { min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 6px 12px; }
+    .settings-row + .settings-row { border-top: 1px solid rgba(255, 255, 255, .045); }
+    .settings-row.sub { background: rgba(0, 0, 0, .12); padding-left: 28px; }
+    .settings-row.sub .settings-label { font-weight: 500; }
+    .row-icon { width: 32px; height: 32px; flex: none; border-radius: 8px; background: rgba(255, 255, 255, .04); display: grid; place-items: center; color: #9a9a9a; }
+    .row-icon .ico { width: 14px; height: 14px; }
+    .settings-label { font-size: 12.5px; font-weight: 500; color: #d1d1d1; line-height: 1.35; }
+    .settings-desc { font-size: 10.5px; color: rgba(255, 255, 255, .38); line-height: 1.4; margin-top: 1px; }
+    .settings-copy { min-width: 0; flex: 1; }
+    .settings-action { flex: none; display: flex; align-items: center; gap: 8px; }
+    .status-done {
+      height: 30px; padding: 0 12px; border-radius: 4px; border: 1px solid rgba(47, 199, 135, .55);
+      background: rgba(47, 199, 135, .08); color: var(--green); font-size: 9.5px; font-weight: 700; letter-spacing: .5px;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .status-done .ico { width: 11px; height: 11px; }
+    .mini-stepper { display: flex; align-items: center; gap: 2px; }
+    .mini-stepper button {
+      width: 30px; height: 30px; border: 0; border-radius: 4px; background: #242424; color: #b3b3b3; display: grid; place-items: center;
+      transition: background-color var(--motion-dur-hover) var(--motion-ease-std), color var(--motion-dur-hover) var(--motion-ease-std), transform var(--motion-dur-press) var(--motion-ease-out);
+    }
+    .mini-stepper button:hover { background: #303030; }
+    .mini-stepper button:active:not(:disabled) { transform: scale(0.92); }
+    .mini-stepper button:disabled { opacity: .3; }
+    .mini-stepper .ico { width: 11px; height: 11px; }
+    .mini-stepper .val { width: 62px; height: 30px; display: grid; place-items: center; background: #1c1c1c; border: 1px solid var(--line); border-radius: 4px; color: #ddd; font-size: 11.5px; }
+    .settings-group-note { font-size: 10px; color: rgba(255, 255, 255, .3); padding: 8px 12px; border-top: 1px solid var(--line); }
+    .settings-note-box { background: rgba(47, 107, 255, .06); border: 1px solid rgba(47, 107, 255, .2); border-radius: 6px; padding: 10px 12px; font-size: 11px; color: rgba(255, 255, 255, .55); margin-top: 12px; }
+    .stream-panel { padding: 22px 28px 60px; max-width: 700px; }
+    .stream-card { background: #242424; border: 1px solid var(--line-2); border-radius: 10px; padding: 16px; margin-top: 14px; }
+    .stream-status { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: #b3b3b3; margin-top: 12px; }
+    .stream-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+    .stream-status .dot.on { background: var(--green); box-shadow: 0 0 8px rgba(47, 199, 135, .5); }
+    .stream-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+    .cur-opt { display: flex; align-items: flex-start; gap: 8px; font-size: 10.5px; line-height: 1.45; color: rgba(255, 255, 255, .55); }
+    .cur-opt input { appearance: none; width: 14px; height: 14px; border-radius: 3px; border: 1px solid #5a5a5a; background: #1c1c1c; margin: 1px 0 0; display: grid; place-items: center; flex: none; }
+    .cur-opt input:checked { background: var(--accent); border-color: var(--accent); }
+    .cur-opt input:checked::after { content: ''; width: 7px; height: 4px; border-left: 2px solid #211302; border-bottom: 2px solid #211302; transform: rotate(-45deg); margin-top: -2px; }
+
+    /* ---------- Modal / profiles ---------- */
+    .modal { position: fixed; inset: 0; z-index: 60; display: none; align-items: flex-start; justify-content: flex-end; background: rgba(0, 0, 0, .35); }
+    .modal.on {
+      display: flex;
+      animation: modalBackdropFade 180ms var(--motion-ease-out) forwards;
+    }
+    .modal.on .modal-card {
+      animation: modalCardSlide var(--motion-dur-modal) var(--motion-ease-out) forwards;
+    }
+    @keyframes modalBackdropFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes modalCardSlide {
+      from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    .modal-card { width: 470px; max-width: calc(100% - 24px); margin: 56px 14px 0 0; background: #242424; border: 1px solid rgba(255, 255, 255, .08); border-radius: 8px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5); max-height: calc(100% - 80px); overflow: auto; }
+    .modal-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    .modal-head h2 { margin: 0; font-family: var(--head); font-size: 14px; font-weight: 600; color: #d1d1d1; flex: 1; }
+    .modal-tabs { display: flex; gap: 4px; padding: 10px 16px 0; }
+    .modal-tab {
+      border: 0; background: transparent; color: #8a8a8a; font-size: 11.5px; font-weight: 600;
+      padding: 7px 2px; margin-right: 14px; position: relative;
+      transition: color var(--motion-dur-hover) var(--motion-ease-std);
+    }
+    .modal-tab::after {
+      content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent);
+      opacity: 0; transform: scaleX(0); transform-origin: center;
+      transition: transform 140ms var(--motion-ease-out), opacity 140ms var(--motion-ease-out);
+    }
+    .modal-tab.active { color: var(--accent); }
+    .modal-tab.active::after { opacity: 1; transform: scaleX(1); }
+    .modal-body { padding: 14px 16px 18px; }
+    .modal-section-title { font-size: 9.5px; font-weight: 700; letter-spacing: .8px; color: #8a8a8a; margin: 14px 0 6px; }
+    .profile-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .profile-entry { background: #1f1f1f; border-radius: 5px; padding: 8px 10px; font-size: 11px; color: #9a9a9a; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .profile-entry > div:first-child { color: #d0d0d0; font-size: 12px; }
+    .profile-actions { display: flex; gap: 4px; margin-left: auto; }
+    .profile-actions .btn { height: 24px; padding: 0 7px; font-size: 9.5px; }
+    .form-row { display: flex; gap: 6px; margin: 8px 0; }
+    .form-row input { flex: 1; height: 32px; border-radius: 4px; border: 1px solid var(--line); background: #1c1c1c; color: #ddd; font-size: 11.5px; padding: 0 9px; outline: none; }
+    .form-row input:focus { border-color: rgba(47,107,255,.55); }
+    .status-line { font-size: 10.5px; line-height: 1.45; color: rgba(255, 255, 255, .45); margin-top: 6px; min-height: 15px; }
+    .assoc { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 4px; }
+    .model-box { height: 150px; display: grid; place-items: center; background: #1c1c1c; border-radius: 6px; margin-bottom: 10px; }
+    .model-box svg { width: 110px; height: 110px; }
+    .kv { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; padding: 3px 0; }
+    .kv span:first-child { color: #8a8a8a; }
+    .kv span:last-child { color: #c9c9c9; text-align: right; word-break: break-all; }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 1100px) {
+      .sidebar { width: 148px; padding-left: 8px; }
+      .nav-item { padding-left: 9px; }
+      .brand { min-width: 128px; }
+    }
+    @media (max-width: 1180px) {
+      .quick-row { grid-template-columns: repeat(2, 1fr); }
+      .mod-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .creator { grid-template-columns: minmax(0, 1fr) 400px; }
+      .settings-layout { grid-template-columns: 200px minmax(0, 1fr); }
+    }
+    #page-designer { position: relative; height: 100%; }
+    #page-designer iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    :where(button, input, select, textarea, .pos-input):focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    /* ---------- Reduced Motion ---------- */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+      .modal.on,
+      .modal.on .modal-card {
+        animation: none !important;
+      }
+    }
+  </style>
+  <link rel="stylesheet" href="rework.css">
+</head>
+<body>
+  <!-- Icon sprite (own artwork, strokes only). -->
+  <svg class="sprite" aria-hidden="true">
+    <defs>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+      <symbol id="i-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.4"/><path d="M12 2v4.2M12 17.8V22M2 12h4.2M17.8 12H22"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h1.6a1.9 1.9 0 0 0 1.1-3.4 1.9 1.9 0 0 1 1.1-3.4H18a3.5 3.5 0 0 0 3.5-3.5A9 9 0 0 0 12 3Z"/><circle cx="7.6" cy="10" r="1"/><circle cx="10" cy="6.8" r="1"/><circle cx="14.6" cy="6.8" r="1"/><circle cx="7.8" cy="14.4" r="1"/></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M7 13h.01M10.5 13h.01M14 13h.01M17 13h.01M8 16h8"/></symbol>
+      <symbol id="i-cursor" viewBox="0 0 24 24"><path d="M5 3.5 19 12l-6.2 1.3L9.2 20 5 3.5Z"/></symbol>
+      <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M3 7h3.5c4.5 0 6.5 10 11 10H21M17 3l4 4-4 4M3 17h3.5c1.7 0 3-1.4 4.2-3M14.7 8.4C15.9 6.9 17.3 6 19 6h2M17 20l4-4-4-4"/></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1"/></symbol>
+      <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.9"/><path d="M12 17h.01"/></symbol>
+      <symbol id="i-news" viewBox="0 0 24 24"><path d="M3 10.5v3a1.5 1.5 0 0 0 1.5 1.5H7l6.5 4V5L7 9H4.5A1.5 1.5 0 0 0 3 10.5Z"/><path d="M17 8.5a5 5 0 0 1 0 7"/></symbol>
+      <symbol id="i-shop" viewBox="0 0 24 24"><path d="M5 8h14l1 12H4L5 8Z"/><path d="M9 9V6.5a3 3 0 0 1 6 0V9"/></symbol>
+      <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3 4h2l2.2 11h11.2l2-8H6"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></symbol>
+      <symbol id="i-grid4" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5.5h16v11H10l-4.5 3v-3H4v-11Z"/><path d="M8 9.5h8M8 12.5h5"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></symbol>
+      <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></symbol>
+      <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6.5 3.5h11v17l-5.5-4-5.5 4v-17Z"/></symbol>
+      <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 9h16v11H4V9Z"/><path d="M3 9l2-5h14l2 5"/><path d="M9 20v-6h6v6"/></symbol>
+      <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M4 13v7h16v-7"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 15v5h16v-5"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 5.6a3.2 3.2 0 0 1 0 5.5M17.5 14.6A5.5 5.5 0 0 1 21 20"/></symbol>
+      <symbol id="i-gift" viewBox="0 0 24 24"><path d="M4 11h16v9H4v-9ZM3 7.5h18V11H3V7.5Z"/><path d="M12 7.5V20"/><path d="M12 7.5S10.8 3 8.4 3a2.1 2.1 0 0 0 0 4.5H12ZM12 7.5S13.2 3 15.6 3a2.1 2.1 0 0 1 0 4.5H12Z"/></symbol>
+      <symbol id="i-dice" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6-5.4-2.8-5.4 2.8 1-6L3.2 9.4l6.1-.9L12 3Z"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></symbol>
+      <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v5h5"/></symbol>
+      <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 20V4M6 10l6-6 6 6"/></symbol>
+      <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 4v16M6 14l6 6 6-6"/></symbol>
+      <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M20 12H4M10 6l-6 6 6 6"/></symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></symbol>
+      <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></symbol>
+      <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/></symbol>
+      <symbol id="i-gamepad" viewBox="0 0 24 24"><path d="M7 7h10a5 5 0 0 1 4.8 6.4l-1 4a3 3 0 0 1-5.1 1.2L14 17h-4l-1.7 1.6a3 3 0 0 1-5.1-1.2l-1-4A5 5 0 0 1 7 7Z"/><path d="M8 11v3M6.5 12.5h3M16 11.5h.01M18 13.5h.01"/></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h3l5 4V5L7 9H4Z"/><path d="M16 9a4 4 0 0 1 0 6"/></symbol>
+      <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></symbol>
+      <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 6.5a4.5 4.5 0 0 0-6 5.9L3 18l3 3 5.6-5.5a4.5 4.5 0 0 0 5.9-6l-3 3-2.5-2.5 3-3Z"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 14v5H5V5h5"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 20 4.5-1L20 7.5 16.5 4 5 15.5 4 20Z"/><path d="m13.5 7 3.5 3.5"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M4 4h13l3 3v13H4V4Z"/><path d="M8 4v6h8V4M8 20v-6h8v6"/></symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="m16 10 5-2v8l-5-2"/></symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/></symbol>
+      <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 5H4v1a4 4 0 0 0 4 4M16 5h4v1a4 4 0 0 1-4 4M12 13v5M8 21h8M9 18h6"/></symbol>
+      <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3s5 4.5 5 9a5 5 0 0 1-10 0c0-2 1-4 2.5-5.5C10 8 12 6 12 3Z"/><path d="M12 21a3 3 0 0 0 3-3c0-2-3-5-3-5s-3 3-3 5a3 3 0 0 0 3 3Z"/></symbol>
+      <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+      <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3.5"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></symbol>
+      <symbol id="i-magic" viewBox="0 0 24 24"><path d="m4 20 12-12M14 4l1-2 1 2 2 1-2 1-1 2-1-2-2-1 2-1ZM20 11l.8-1.6L22 11l-1.2.8L20 14l-.8-2.2L18 11l2-.8Z"/><path d="m11 7 6 6"/></symbol>
+      <symbol id="i-helmet" viewBox="0 0 24 24"><path d="M4 13a8 8 0 0 1 16 0v4H4v-4Z"/><path d="M4 15h9M13 15h7"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2"/></symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#1c1c1c"/><circle cx="15" cy="12" r="2" fill="#1c1c1c"/><circle cx="7" cy="18" r="2" fill="#1c1c1c"/></symbol>
+      <symbol id="i-text" viewBox="0 0 24 24"><path d="M12 3v18M8 4h8M8 20h8"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="../../assets/icon.svg" alt="" width="24" height="24" aria-hidden="true">
+      <div class="brand-text">OpenCrosshair<b>Q</b></div>
+    </div>
+    <div class="topbar-spacer"></div>
+    <button class="profile-chip" id="profileChip" title="Perfis">
+      <svg class="ico"><use href="#i-user"/></svg>
+      <span id="profileChipName">Padrão</span>
+      <svg class="ico chev"><use href="#i-chev-down"/></svg>
+    </button>
+    <div class="vis-wrap">
+      <div class="vis-preview" id="visPreview" title="Pré-visualização da mira"></div>
+      <label class="power" title="Mostrar mira">
+        <input type="checkbox" id="visible">
+        <span class="power-track"><span class="power-knob"><svg class="ico"><use href="#i-power"/></svg></span></span>
+      </label>
+    </div>
+    <div class="wincontrols">
+      <button class="winbtn" id="btnWinMin" title="Minimizar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 12h16"/></svg></button>
+      <button class="winbtn" id="btnWinMax" title="Maximizar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="5" width="14" height="14"/></svg></button>
+      <button class="winbtn close" id="btnWinClose" title="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m5 5 14 14M19 5 5 19"/></svg></button>
+    </div>
+  </header>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <nav class="side-nav">
+        <button class="nav-item menu-toggle" id="btnMenu" title="Recolher menu"><svg class="ico"><use href="#i-menu"/></svg><span>Menu</span></button>
+        <button class="nav-item" data-route="crosshairs"><svg class="ico"><use href="#i-crosshair"/></svg><span>Miras</span></button>
+        <button class="nav-item" data-route="designer"><svg class="ico"><use href="#i-palette"/></svg><span>Criador</span></button>
+        <button class="nav-item" data-route="keybinds"><svg class="ico"><use href="#i-keyboard"/></svg><span>Atalhos de Teclas</span></button>
+        <button class="nav-item" data-route="positions"><svg class="ico"><use href="#i-crosshair"/></svg><span>Posições</span></button>
+        <div class="side-gap"></div>
+        <button class="nav-item" data-route="startup"><svg class="ico"><use href="#i-gear"/></svg><span>Configurações</span></button>
+      </nav>
+    </aside>
+
+    <main class="content" id="content">
+      <section class="page on" id="page-crosshairs">
+        <div class="x-tabs">
+          <button class="xtab active" data-xtab="descobrir"><svg class="ico"><use href="#i-compass"/></svg><span class="xtab-label">Descobrir</span></button>
+          <button class="xtab" data-xtab="navegar"><svg class="ico"><use href="#i-search"/></svg><span class="xtab-label">Navegar</span></button>
+          <button class="xtab" data-xtab="salvos"><svg class="ico"><use href="#i-bookmark"/></svg><span class="xtab-label">Salvos</span> <span class="count" id="savedCount"></span></button>
+          <button class="xtab" data-xtab="workshop" hidden><svg class="ico"><use href="#i-store"/></svg><span class="xtab-label">Workshop</span></button>
+          <div class="x-actions">
+            <button class="x-action" id="btnShare"><svg class="ico"><use href="#i-share"/></svg>Compartilhar</button>
+            <button class="x-action" id="btnImport"><svg class="ico"><use href="#i-download"/></svg>Importar</button>
+            <button class="x-action" id="btnXGear" aria-label="Configurações de miras"><svg class="ico"><use href="#i-gear"/></svg></button>
+          </div>
+        </div>
+        <div class="x-body">
+          <div id="xPanelDescobrir">
+            <div class="x-hero">
+              <svg class="x-hero-logo" viewBox="0 0 46 46" aria-hidden="true">
+                <circle cx="23" cy="23" r="20" fill="none" stroke="#E8ECF2" stroke-width="2"/>
+                <g stroke="#2F6BFF" stroke-width="2.8" stroke-linecap="round" fill="none">
+                  <path d="M23 6v12M23 28v12M6 23h12M28 23h12"/>
+                </g>
+                <circle cx="23" cy="23" r="4" fill="#2F6BFF"/>
+              </svg>
+              <div>
+                <h2 id="xHeroTitle">Bem-vindo ao OpenCrosshairQ</h2>
+                <p id="xHeroText">Biblioteca local, edição por camadas e favoritos no seu computador.</p>
+              </div>
+            </div>
+            <div class="x-dots" id="xHeroDots">
+              <button class="x-dot active" data-slide="0" aria-label="Destaque 1"></button>
+              <button class="x-dot" data-slide="1" aria-label="Destaque 2"></button>
+              <button class="x-dot" data-slide="2" aria-label="Destaque 3"></button>
+              <button class="x-dot" data-slide="3" aria-label="Destaque 4"></button>
+              <button class="x-dot" data-slide="4" aria-label="Destaque 5"></button>
+            </div>
+            <div class="quick-row">
+              <button class="quick hl" id="btnQuickNavegar"><svg class="ico"><use href="#i-search"/></svg>Navegar</button>
+              <button class="quick" id="btnQuickCriador"><svg class="ico"><use href="#i-palette"/></svg>Criador</button>
+              <button class="quick" id="btnQuickGift"><svg class="ico"><use href="#i-gift"/></svg>Presentear</button>
+              <button class="quick" id="btnQuickRandom2" hidden><svg class="ico"><use href="#i-shuffle"/></svg>Surpreenda-me</button>
+            </div>
+            <div class="bento-top">
+              <div class="bento-card">
+                <span class="card-chip"><svg class="ico"><use href="#i-clock"/></svg>CONTINUE DE ONDE PAROU</span>
+                <div class="cont-preview" id="continuePreview"></div>
+                <div class="cont-meta">
+                  <div class="cont-name" id="continueName">Mira atual</div>
+                  <div class="cont-sub" id="continueSub">Perfil atual</div>
+                </div>
+                <div class="cont-dots" id="contDots"></div>
+                <div class="cont-actions">
+                  <button class="icon-btn" id="contDownload" title="Baixar mira"><svg class="ico"><use href="#i-download"/></svg></button>
+                  <button class="icon-btn" id="contSave" title="Salvar nos favoritos"><svg class="ico"><use href="#i-bookmark"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <div class="creator">
+              <span class="card-chip"><svg class="ico"><use href="#i-star"/></svg>EXEMPLOS LOCAIS</span>
+              <div class="creator-left">
+                <div class="creator-avatar">
+                  <svg viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="21" r="16" fill="none" stroke="#E8ECF2" stroke-width="2"/><g stroke="#2F6BFF" stroke-width="2.4" stroke-linecap="round" fill="none"><path d="M21 6v10M21 26v10M6 21h10M26 21h10"/></g><circle cx="21" cy="21" r="3" fill="#2F6BFF"/></svg>
+                </div>
+                <div class="creator-name">OpenCrosshairQ <svg class="ico"><use href="#i-check"/></svg></div>
+                <div class="creator-tag">Aplique um exemplo, personalize no Criador e salve nos favoritos.</div>
+              </div>
+              <div class="creator-cards" id="creatorCards"></div>
+            </div>
+            <div class="grid-head"><h3>Recomendados</h3><span class="rule"></span></div>
+            <div class="mod-grid" id="browseGrid"></div>
+          </div>
+
+          <div id="xPanelNavegar" hidden>
+            <div class="browse-panel">
+              <div class="grid-head"><h3>Biblioteca local</h3><span class="rule"></span></div>
+              <p class="browse-note">Miras de exemplo geradas localmente. Aplique um modelo ou importe seu JSON.</p>
+              <div class="mod-grid" id="navegarGrid"></div>
+            </div>
+          </div>
+
+          <div id="xPanelSalvos" hidden>
+            <div class="browse-panel">
+              <div class="grid-head"><h3>Miras salvas</h3><span class="rule"></span></div>
+              <div class="mod-grid" id="savedGrid"></div>
+              <div class="empty-state" id="savedEmpty" hidden>Nenhuma mira salva ainda. Use o marcador em um cartão para salvar.</div>
+            </div>
+          </div>
+
+          <div id="xPanelWorkshop" hidden></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-positions">
+        <div class="pos-page">
+          <div class="pos-bento-card">
+            <h1 class="pos-title">Tamanho</h1>
+            <p class="pos-desc">Ajuste o tamanho geral da sua mira</p>
+            <div class="pos-row">
+              <span class="pos-label"><svg class="ico"><use href="#i-wrench"/></svg>Escala</span>
+              <input class="pos-input" id="scale" type="number" min="0.01" max="10" step="0.01" value="1" aria-label="Escala">
+              <input class="pos-slider" id="scaleRange" type="range" min="0.01" max="10" step="0.01" value="1" aria-label="Escala">
+              <div class="pos-stepper">
+                <button id="scaleMinus" aria-label="Diminuir escala"><svg class="ico"><use href="#i-minus"/></svg></button>
+                <button id="scaleReset" aria-label="Restaurar escala"><svg class="ico"><use href="#i-reset"/></svg></button>
+                <button id="scalePlus" aria-label="Aumentar escala"><svg class="ico"><use href="#i-plus"/></svg></button>
+              </div>
+            </div>
+            <div class="shortcut-strip" data-shortcut="scale">
+              <span class="shortcut-label">ATALHO</span>
+              <kbd class="keycap">Alt</kbd><kbd class="keycap">Shift</kbd><kbd class="keycap">+</kbd><span class="muted">/</span><kbd class="keycap">-</kbd>
+              <div class="seg" id="scaleShortcut" title="Os atalhos de escala só funcionam com a janela do OpenCrosshairQ em foco.">
+                <button data-scale-shortcut="off" class="active">DESLIGADO</button>
+                <button data-scale-shortcut="alt">LIGADO</button>
+              </div>
+            </div>
+            <p class="pos-hint">Atalhos de escala funcionam com a janela em foco.</p>
+          </div>
+
+          <div class="pos-bento-card">
+            <h2 class="pos-title">Posição</h2>
+            <p class="pos-desc">Mova sua mira a partir do centro. Use as setas do teclado quando focado.</p>
+            <div class="pos-position-grid">
+              <div class="pos-rows">
+                <div class="pos-row">
+                  <span class="pos-label"><svg class="ico"><use href="#i-move"/></svg>X</span>
+                  <input class="pos-input" id="offsetX" type="number" min="-2000" max="2000" step="1" value="0" aria-label="Posição X">
+                  <input class="pos-slider" id="offsetXRange" type="range" min="-2000" max="2000" step="1" value="0" aria-label="Posição X">
+                </div>
+                <div class="pos-row">
+                  <span class="pos-label"><svg class="ico"><use href="#i-arrow-up"/></svg>Y</span>
+                  <input class="pos-input" id="offsetY" type="number" min="-2000" max="2000" step="1" value="0" aria-label="Posição Y">
+                  <input class="pos-slider" id="offsetYRange" type="range" min="-2000" max="2000" step="1" value="0" aria-label="Posição Y">
+                </div>
+              </div>
+              <div class="dpad" id="posDpad">
+                <button class="up" id="dpadUp" aria-label="Mover para cima"><svg class="ico"><use href="#i-arrow-up"/></svg></button>
+                <button class="left" id="dpadLeft" aria-label="Mover para a esquerda"><svg class="ico"><use href="#i-arrow-left"/></svg></button>
+                <span class="center"><i></i></span>
+                <button class="right" id="dpadRight" aria-label="Mover para a direita"><svg class="ico"><use href="#i-arrow-right"/></svg></button>
+                <button class="down" id="dpadDown" aria-label="Mover para baixo"><svg class="ico"><use href="#i-arrow-down"/></svg></button>
+              </div>
+            </div>
+            <div class="shortcut-strip" data-shortcut="position">
+              <span class="shortcut-label">ATALHO</span>
+              <kbd class="keycap">Alt</kbd><kbd class="keycap">Shift</kbd><kbd class="keycap">↑</kbd><kbd class="keycap">↓</kbd><kbd class="keycap">←</kbd><kbd class="keycap">→</kbd>
+              <div class="seg" id="posShortcut" title="Os atalhos de posição só funcionam com a janela do OpenCrosshairQ em foco.">
+                <button data-pos-shortcut="off" class="active">Desligado</button>
+                <button data-pos-shortcut="arrows">Setas</button>
+                <button data-pos-shortcut="wasd">WASD</button>
+              </div>
+            </div>
+            <p class="pos-hint" id="posShortcutStatus">Atalhos de posição desligados.</p>
+          </div>
+
+          <div class="pos-bento-card">
+            <div class="tiny" style="margin-bottom:15px">POSIÇÕES SALVAS</div>
+            <div class="pos-foot">
+              <input id="posName" placeholder="Nome da posição" maxlength="120">
+              <button class="save-pos" id="btnSavePos" title="Salvar posição atual"><svg class="ico"><use href="#i-bookmark"/></svg></button>
+            </div>
+            <div class="saved-list" id="savedPositions"></div>
+            <p class="status-line" id="positionsStatus" role="status"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-keybinds">
+        <div class="kb-page">
+          <h1 class="kb-title">Configurar Atalhos de Teclado</h1>
+          <p class="kb-desc">Se você precisa alternar a visibilidade da mira ou selecionar uma com base em um comando de entrada (teclado, mouse ou controle), faça isso aqui.</p>
+
+          <div class="kb-section">
+            <div class="kb-section-title"><svg class="ico"><use href="#i-keyboard"/></svg>ATALHOS DE AÇÃO</div>
+            <div class="kb-card">
+              <table class="kb-table">
+                <thead>
+                  <tr>
+                    <th>ATALHO</th>
+                    <th class="c"><svg class="ico" style="margin:0 auto"><use href="#i-monitor"/></svg></th>
+                    <th class="c"><svg class="ico" style="margin:0 auto"><use href="#i-gamepad"/></svg></th>
+                  </tr>
+                </thead>
+                <tbody id="keybindList"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="kb-section">
+            <div class="kb-section-title"><svg class="ico"><use href="#i-crosshair"/></svg>ATALHOS DE MIRA</div>
+            <div class="kb-card">
+              <table class="kb-table">
+                <thead>
+                  <tr>
+                    <th>MIRA</th>
+                    <th class="c"><svg class="ico" style="margin:0 auto"><use href="#i-monitor"/></svg></th>
+                    <th class="c"><svg class="ico" style="margin:0 auto"><use href="#i-gamepad"/></svg></th>
+                  </tr>
+                </thead>
+                <tbody id="crosshairKeybindList">
+                  <tr><td colspan="3"><button class="kb-add" id="btnNewKeybind"><span class="kb-plus-tile"><svg class="ico"><use href="#i-plus"/></svg></span>Nova</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p class="kb-note">Somente "Alternar Global" aceita captura de tecla. Escape cancela a captura. Mirar/Atirar (leitura fixa do monitor) e demais funções não suportam remapeamento neste build.</p>
+          <p class="status-line" id="keybindStatus" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="page" id="page-startup">
+        <div class="opt-tabs">
+          <button class="opt-tab active" id="optTabGeral"><svg class="ico"><use href="#i-gear"/></svg><span class="opt-tab-label">Geral</span></button>
+          <button class="opt-tab" id="optTabDisplay"><svg class="ico"><use href="#i-monitor"/></svg><span class="opt-tab-label">Modos de Exibição</span></button>
+          <button class="opt-tab" id="optTabStream"><svg class="ico"><use href="#i-camera"/></svg><span class="opt-tab-label">Gravação / Streaming</span></button>
+        </div>
+
+        <div id="optPanelGeral">
+          <div class="settings-layout">
+            <aside class="settings-sidebar">
+              <h3><svg class="ico"><use href="#i-filter"/></svg>CATEGORIAS</h3>
+              <nav id="optCats">
+                <button class="settings-filter active" data-optcat="all"><svg class="ico"><use href="#i-settings"/></svg>Todos</button>
+                <button class="settings-filter" data-optcat="interface"><svg class="ico"><use href="#i-monitor"/></svg>Interface</button>
+                <button class="settings-filter" data-optcat="exibicao"><svg class="ico"><use href="#i-eye"/></svg>Exibição</button>
+                <button class="settings-filter" data-optcat="posicao"><svg class="ico"><use href="#i-move"/></svg>Posição e Tamanho</button>
+                <button class="settings-filter" data-optcat="inicializacao"><svg class="ico"><use href="#i-power"/></svg>Inicialização</button>
+                <button class="settings-filter" data-optcat="desempenho"><svg class="ico"><use href="#i-target"/></svg>Desempenho</button>
+                <button class="settings-filter" data-optcat="entrada" hidden style="display:none"><svg class="ico"><use href="#i-gamepad"/></svg>Entrada</button>
+                <button class="settings-filter" data-optcat="integracoes" hidden style="display:none"><svg class="ico"><use href="#i-link"/></svg>Integrações</button>
+                <button class="settings-filter" data-optcat="comunidade" hidden style="display:none"><svg class="ico"><use href="#i-users"/></svg>Conteúdo da Comunidade</button>
+                <button class="settings-filter" data-optcat="acoes"><svg class="ico"><use href="#i-wrench"/></svg>Ações</button>
+                <button class="settings-filter" data-optcat="mira" hidden style="display:none"><svg class="ico"><use href="#i-crosshair"/></svg>Mira (avançado)</button>
+              </nav>
+            </aside>
+
+            <div class="settings-main">
+              <div class="settings-cat on" data-cat="interface">
+                <div class="settings-cat-head"><svg class="ico"><use href="#i-monitor"/></svg>INTERFACE</div>
+                <div class="settings-section">
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-monitor"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label" id="lblOptLanguage">Idioma</div><div class="settings-desc" id="descOptLanguage">Escolha seu idioma preferido</div></div>
+                    <div class="settings-action">
+                      <select class="select" id="optionLanguage" aria-label="Idioma">
+                        <option value="pt-BR">Português - Brasil</option>
+                        <option value="en-US">English (US)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-volume"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label" id="lblOptSounds">Sons da Interface</div><div class="settings-desc" id="descOptSounds">Efeitos sonoros sutis em cliques e ações na interface.</div></div>
+                    <div class="settings-action"><label class="switch" title="Sons da interface"><input type="checkbox" id="optionSounds" aria-label="Sons da interface"><i></i></label></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-cat on" data-cat="exibicao">
+                <div class="settings-cat-head"><svg class="ico"><use href="#i-eye"/></svg>EXIBIÇÃO</div>
+                <div class="settings-section">
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-monitor"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Modo de Exibição</div><div class="settings-desc">Selecione como sua mira é exibida no jogo</div></div>
+                    <div class="settings-action">
+                      <select class="select" id="displayMode" aria-label="Modo de exibição" disabled>
+                        <option>Overlay por janela</option>
+                      </select>
+                      <span class="row-icon" title="Outros modos indisponíveis neste build"><svg class="ico"><use href="#i-info"/></svg></span>
+                    </div>
+                  </div>
+                  <div class="settings-row sub">
+                    <span class="row-icon"><svg class="ico"><use href="#i-check"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Status do overlay</div><div class="settings-desc">A janela de sobreposição está ativa e transparente.</div></div>
+                    <div class="settings-action"><span class="status-done"><svg class="ico"><use href="#i-check"/></svg>ATIVO</span></div>
+                  </div>
+                  <div class="settings-row only-in-game-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-gamepad"/></svg></span>
+                    <div class="settings-copy">
+                      <div class="settings-label" id="lblOnlyInGame">Mostrar Apenas no Jogo</div>
+                      <div class="settings-desc" id="descOnlyInGame">Exibir a mira apenas quando o executável configurado for a janela ativa.</div>
+                      <div class="only-in-game-controls" style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <input class="input mono" id="onlyInGameProcessPath" placeholder="Caminho do executável (.exe)" style="flex:1;min-width:240px;height:30px;font-size:12px;padding:4px 8px;" aria-label="Caminho do executável do jogo">
+                        <button type="button" class="btn" id="btnBrowseGameExecutable" style="height:30px;padding:0 10px;font-size:12px;">PROCURAR...</button>
+                        <button type="button" class="btn" id="btnCaptureOnlyInGame" style="height:30px;padding:0 10px;font-size:12px;" title="Capturar janela ativa agora">CAPTURAR</button>
+                        <button type="button" class="btn danger" id="btnClearOnlyInGameProcess" style="height:30px;padding:0 8px;font-size:12px;" title="Limpar executável">LIMPAR</button>
+                      </div>
+                      <p class="status-line" id="onlyInGameStatus" role="status" aria-live="polite" style="margin-top:6px;"></p>
+                    </div>
+                    <div class="settings-action"><label class="switch"><input type="checkbox" id="optionOnlyInGame" aria-label="Mostrar apenas no jogo"><i></i></label></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-cat on" data-cat="posicao">
+                <div class="settings-cat-head"><svg class="ico"><use href="#i-move"/></svg>POSIÇÃO E TAMANHO</div>
+                <div class="settings-section">
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-target"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Tamanho</div><div class="settings-desc">Ajuste o tamanho geral da sua mira</div></div>
+                    <div class="settings-action">
+                      <div class="mini-stepper">
+                        <button id="optionCrosshairSizeMinus" aria-label="Diminuir tamanho"><svg class="ico"><use href="#i-minus"/></svg></button>
+                        <span class="val" id="optionCrosshairSizeV">1.0</span>
+                        <button id="optionCrosshairSizePlus" aria-label="Aumentar tamanho"><svg class="ico"><use href="#i-plus"/></svg></button>
+                        <button id="optionCrosshairSizeReset" aria-label="Restaurar tamanho"><svg class="ico"><use href="#i-reset"/></svg></button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-move"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Posição X</div><div class="settings-desc">Deslocamento horizontal do centro</div></div>
+                    <div class="settings-action">
+                      <div class="mini-stepper">
+                        <button id="optionOffsetXMinus" aria-label="Mover para a esquerda"><svg class="ico"><use href="#i-arrow-left"/></svg></button>
+                        <span class="val" id="optionOffsetXV">0</span>
+                        <button id="optionOffsetXPlus" aria-label="Mover para a direita"><svg class="ico"><use href="#i-arrow-right"/></svg></button>
+                        <button id="optionOffsetXReset" aria-label="Zerar X"><svg class="ico"><use href="#i-reset"/></svg></button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-move"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Posição Y</div><div class="settings-desc">Deslocamento vertical do centro</div></div>
+                    <div class="settings-action">
+                      <div class="mini-stepper">
+                        <button id="optionOffsetYMinus" aria-label="Mover para baixo"><svg class="ico"><use href="#i-arrow-down"/></svg></button>
+                        <span class="val" id="optionOffsetYV">0</span>
+                        <button id="optionOffsetYPlus" aria-label="Mover para cima"><svg class="ico"><use href="#i-arrow-up"/></svg></button>
+                        <button id="optionOffsetYReset" aria-label="Zerar Y"><svg class="ico"><use href="#i-reset"/></svg></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="settings-group-note">Os mesmos valores estão disponíveis, com controles deslizantes, na página Posições.</div>
+              </div>
+
+              <div class="settings-cat on" data-cat="desempenho">
+                <div class="settings-cat-head"><svg class="ico"><use href="#i-target"/></svg>DESEMPENHO</div>
+                <div class="settings-section">
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-target" /></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Limitar tamanho da mira</div><div class="settings-desc">Impede que a mira ultrapasse metade do monitor.</div></div>
+                    <div class="settings-action"><label class="switch"><input type="checkbox" id="limitSize"><i></i></label></div>
+                  </div>
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-eye"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Mostrar mira secundária</div><div class="settings-desc">Exibe a mira alternativa junto com a principal.</div></div>
+                    <div class="settings-action"><label class="switch"><input type="checkbox" id="showSecondary"><i></i></label></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-cat on" data-cat="inicializacao">
+                <div class="settings-cat-head"><svg class="ico"><use href="#i-power"/></svg>INICIALIZAÇÃO</div>
+                <div class="settings-section">
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-power"/></svg></span>
+                    <div class="settings-copy">
+                      <div class="settings-label">Iniciar com o Windows</div>
+                      <div class="settings-desc">Inicia o aplicativo automaticamente ao fazer login no Windows.</div>
+                      <p class="status-line" id="startupStatus" role="status" aria-live="polite"></p>
+                    </div>
+                    <div class="settings-action"><label class="switch"><input type="checkbox" id="optionStartWithWindows" aria-label="Iniciar com o Windows" disabled><i></i></label></div>
+                  </div>
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-minus"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Iniciar minimizado</div><div class="settings-desc">Inicia o aplicativo minimizado ou na bandeja.</div></div>
+                    <div class="settings-action"><label class="switch"><input type="checkbox" id="optionStartMinimized" aria-label="Iniciar minimizado" disabled><i></i></label></div>
+                  </div>
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-download"/></svg></span>
+                    <div class="settings-copy">
+                      <div class="settings-label">Minimizar para bandeja</div>
+                      <div class="settings-desc">Ao fechar ou minimizar a janela, mantém o aplicativo na área de notificação.</div>
+                      <p class="status-line" id="trayStatus" role="status" aria-live="polite"></p>
+                    </div>
+                    <div class="settings-action"><label class="switch"><input type="checkbox" id="optionMinimizeToTray" aria-label="Minimizar para bandeja"><i></i></label></div>
+                  </div>
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-refresh"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Verificar atualizações</div><div class="settings-desc">Verificação online desativada neste build.</div></div>
+                    <div class="settings-action"><button class="btn" id="btnCheckUpdates" disabled>VERIFICAR</button></div>
+                  </div>
+                </div>
+              </div>
+
+              <div hidden style="display:none !important">
+                <div class="settings-cat" data-cat="entrada">
+                  <div class="settings-cat-head"><svg class="ico"><use href="#i-gamepad"/></svg>ENTRADA</div>
+                  <div class="settings-section">
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-gamepad"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Suporte a controle</div><div class="settings-desc">Leitura de botões do controle via XInput; os atalhos exibidos são informativos.</div></div>
+                      <div class="settings-action"><span class="status-done"><svg class="ico"><use href="#i-check"/></svg>LEITURA ATIVA</span></div>
+                    </div>
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-keyboard"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Remapear teclas</div><div class="settings-desc">Somente Alternar Global aceita remapeamento; demais entradas são somente leitura.</div></div>
+                      <div class="settings-action"><button class="btn" id="btnOpenKeybinds">VER ATALHOS</button></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-cat" data-cat="integracoes">
+                  <div class="settings-cat-head"><svg class="ico"><use href="#i-link"/></svg>INTEGRAÇÕES</div>
+                  <div class="settings-section">
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-chat"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Discord Rich Presence</div><div class="settings-desc">Integração desativada neste build.</div></div>
+                      <div class="settings-action"><label class="switch"><input type="checkbox" id="optionDiscord" aria-label="Discord Rich Presence" disabled><i></i></label></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-cat" data-cat="comunidade">
+                  <div class="settings-cat-head"><svg class="ico"><use href="#i-users"/></svg>CONTEÚDO DA COMUNIDADE</div>
+                  <div class="settings-section">
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-users"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Conteúdo da comunidade</div><div class="settings-desc">Feed online desativado neste build.</div></div>
+                      <div class="settings-action"><label class="switch"><input type="checkbox" id="optionCommunity" aria-label="Conteúdo da comunidade" disabled><i></i></label></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-cat on" data-cat="acoes">
+                <div class="settings-cat-head"><svg class="ico"><use href="#i-wrench"/></svg>AÇÕES</div>
+                <div class="settings-section">
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-reset"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Restaurar configurações</div><div class="settings-desc">Volta visibilidade, escala, deslocamento e opções de exibição ao padrão.</div></div>
+                    <div class="settings-action"><button class="btn" id="btnResetSettings">RESTAURAR</button></div>
+                  </div>
+                  <div class="settings-row">
+                    <span class="row-icon"><svg class="ico"><use href="#i-save"/></svg></span>
+                    <div class="settings-copy"><div class="settings-label">Exportar configuração</div><div class="settings-desc">Exportação das configurações desativada neste build; miras podem ser exportadas na biblioteca.</div></div>
+                    <div class="settings-action"><button class="btn" id="btnExportConfig" disabled>EXPORTAR</button></div>
+                  </div>
+                </div>
+              </div>
+
+              <div hidden style="display:none !important">
+                <div class="settings-cat" data-cat="mira">
+                  <div class="settings-cat-head"><svg class="ico"><use href="#i-crosshair"/></svg>MIRA (AVANÇADO)</div>
+                  <div class="settings-section">
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-palette"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Cor</div><div class="settings-desc">Cor dos braços e do ponto</div></div>
+                      <div class="settings-action"><input type="color" id="color" value="#ffffff" style="width:40px;height:28px;border:0;background:transparent"></div>
+                    </div>
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-move"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Comprimento dos braços</div></div>
+                      <div class="settings-action"><input type="range" id="armLen" min="0" max="40" step="1" value="8" style="width:150px"><span class="settings-desc" id="armLenV">8</span></div>
+                    </div>
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-minus"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Espessura</div></div>
+                      <div class="settings-action"><input type="range" id="armThick" min="1" max="20" step="1" value="2" style="width:150px"><span class="settings-desc" id="armThickV">2</span></div>
+                    </div>
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-target"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Vão central</div></div>
+                      <div class="settings-action"><input type="range" id="gap" min="0" max="30" step="1" value="4" style="width:150px"><span class="settings-desc" id="gapV">4</span></div>
+                    </div>
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-reset"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Rotação</div></div>
+                      <div class="settings-action"><input type="range" id="rotation" min="0" max="90" step="1" value="0" style="width:150px"><span class="settings-desc" id="rotationV">0</span></div>
+                    </div>
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-circle"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Ponto central</div></div>
+                      <div class="settings-action">
+                        <label class="switch"><input type="checkbox" id="dotEnabled"><i></i></label>
+                        <select class="select" id="dotShape" style="min-width:86px"><option value="circle">Círculo</option><option value="square">Quadrado</option></select>
+                        <input type="range" id="dotSize" min="0" max="20" step="1" value="2" style="width:100px">
+                        <span class="settings-desc" id="dotSizeV">2</span>
+                      </div>
+                    </div>
+                    <div class="settings-row">
+                      <span class="row-icon"><svg class="ico"><use href="#i-eye"/></svg></span>
+                      <div class="settings-copy"><div class="settings-label">Contorno</div></div>
+                      <div class="settings-action">
+                        <label class="switch"><input type="checkbox" id="outlineEnabled"><i></i></label>
+                        <input type="color" id="outlineColor" value="#000000" style="width:34px;height:26px;border:0;background:transparent">
+                        <input type="range" id="outlineWidth" min="0" max="6" step="1" value="1" style="width:90px">
+                        <span class="settings-desc" id="outlineWidthV">1</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="settings-group-note">Estes controles editam o modelo primário. Camadas e formas avançadas ficam no Criador.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="optPanelDisplay" style="display:none">
+          <div class="stream-panel">
+            <h2 class="pos-title">Modos de Exibição</h2>
+            <p class="pos-desc">O OpenCrosshairQ funciona como uma janela de sobreposição transparente (desktop overlay). Jogos em modo tela cheia exclusiva (Exclusive Fullscreen) cobrem janelas normais do Windows; configure o jogo como Janela Sem Bordas (Borderless Windowed) para visualizar a mira. Por ser uma sobreposição externa e não injetar código na memória do jogo, não é detectada como cheat nem interfere com softwares anti-cheat.</p>
+            <div class="settings-section">
+              <div class="settings-row">
+                <span class="row-icon"><svg class="ico"><use href="#i-monitor"/></svg></span>
+                <div class="settings-copy"><div class="settings-label">Monitor da mira</div><div class="settings-desc">Escolha onde a sobreposição é exibida.</div></div>
+                <div class="settings-action"><select class="select" id="display" aria-label="Monitor"></select></div>
+              </div>
+            </div>
+            <div class="settings-note-box" id="displaysInfo">Os monitores detectados aparecem na lista acima.</div>
+          </div>
+        </div>
+
+        <div id="optPanelStream" style="display:none">
+          <div class="stream-panel">
+            <h2 class="pos-title">Gravação / Streaming</h2>
+            <p class="pos-desc">Servidor HTTP local que expõe o estado atual da mira para sobreposições de terceiros (OBS, XSplit e similares).</p>
+            <div class="stream-card">
+              <div class="settings-label">Servidor HTTP local</div>
+              <div class="settings-desc">Inicia um servidor em 127.0.0.1 na porta 24164. A detecção automática de OBS/XSplit não está implementada; conecte a URL manualmente na fonte do navegador.</div>
+              <div class="stream-status"><span class="dot" id="streamerDot"></span><span id="streamerStatus" role="status">Consultando servidor HTTP local…</span></div>
+              <div class="stream-actions"><button class="btn primary" id="btnStreamer">Consultar</button></div>
+            </div>
+            <div class="settings-note-box">Limitação conhecida: o servidor entrega o estado da mira, mas não configura fontes no OBS automaticamente.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-designer">
+        <iframe id="designerFrame" src="../designer/designer.html" title="Criador"></iframe>
+      </section>
+
+
+
+
+
+
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="modal" id="profileModal" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
+    <div class="modal-card">
+      <div class="modal-head">
+        <svg class="ico"><use href="#i-user"/></svg>
+        <h2 id="profileModalTitle">Perfis</h2>
+        <button class="icon-btn" id="profileModalClose" style="width:26px;height:26px" aria-label="Fechar"><svg class="ico"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" id="tabConfig">Atual</button>
+        <button class="modal-tab" id="tabPerfis">Perfis</button>
+      </div>
+      <div class="modal-body">
+        <div id="panelConfig">
+          <div class="model-box" id="modelPreview"></div>
+          <div class="kv"><span>Perfil atual</span><span id="homeProfileName">–</span></div>
+          <div class="kv"><span>Aplicativo</span><span id="homeProfilePath">–</span></div>
+          <div class="kv"><span>Mira</span><span id="homeModelSpec">–</span></div>
+          <div class="form-row" style="margin-top:12px">
+            <button class="btn primary" id="openDesigner" style="flex:1">Abrir Criador</button>
+            <button class="btn" id="btnHomePerfis" style="flex:1">Gerenciar perfis</button>
+          </div>
+          <div class="kv"><span>Perfis</span><span id="statProfiles">–</span></div>
+          <div class="kv"><span>Vinculados</span><span id="statLinked">–</span></div>
+          <div class="kv"><span>Versão</span><span id="statVersion">–</span></div>
+        </div>
+        <div id="panelPerfis" style="display:none">
+          <div class="form-row">
+            <input id="profileName" placeholder="Nome do novo perfil" maxlength="200">
+            <button class="btn" id="btnNewProfile">Criar</button>
+          </div>
+          <ul class="profile-list" id="profileList"></ul>
+          <p class="status-line" id="profileStatus" role="status"></p>
+          <div class="assoc" id="profileAssociation" hidden>
+            <div class="modal-section-title" id="profileAssociationTitle">Aplicativo do perfil</div>
+            <div class="form-row">
+              <input id="profileProcessPath" placeholder="C:\Jogos\jogo.exe">
+              <button class="btn" id="btnCaptureForeground" title="Capturar aplicativo em foco">Capturar</button>
+            </div>
+            <label class="cur-opt" style="margin:6px 0 8px">
+              <input type="checkbox" id="profileHideCrosshairWhenUnfocused">
+              <span>Ocultar a mira quando o aplicativo perder o foco</span>
+            </label>
+            <div class="form-row">
+              <button class="btn primary" id="btnSaveProfile" style="flex:1">Salvar associação</button>
+              <button class="btn" id="btnNativeStatus">Atualizar status</button>
+            </div>
+            <p class="status-line" id="nativeStatus" role="status"></p>
+          </div>
+          <label class="cur-opt" style="margin-top:12px">
+            <input type="checkbox" id="profileDetectionEnabled">
+            <span>Detectar automaticamente o aplicativo em foco</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle">
+    <div class="modal-card" style="width:440px">
+      <div class="modal-head">
+        <svg class="ico"><use href="#i-share"/></svg>
+        <h2 id="shareModalTitle">Compartilhar Mira</h2>
+        <button class="icon-btn" id="shareModalClose" style="width:26px;height:26px" aria-label="Fechar"><svg class="ico"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="settings-desc" id="shareModalDesc" style="margin-bottom:8px">Copie o código versionado da sua mira ou salve em arquivo JSON.</p>
+        <textarea id="shareCodeText" readonly style="width:100%;height:90px;background:#181818;border:1px solid rgba(255,255,255,.1);border-radius:4px;color:#eee;font-family:monospace;font-size:11px;padding:8px;resize:none;box-sizing:border-box"></textarea>
+        <div class="form-row" style="margin-top:12px">
+          <button class="btn primary" id="btnCopyShareCode" style="flex:1"><svg class="ico" style="width:13px;height:13px;margin-right:4px"><use href="#i-copy"/></svg><span id="btnCopyShareText">Copiar Código</span></button>
+          <button class="btn" id="btnExportShareFile" style="flex:1"><svg class="ico" style="width:13px;height:13px;margin-right:4px"><use href="#i-download"/></svg><span id="btnExportShareText">Salvar JSON</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="importModal" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+    <div class="modal-card" style="width:440px">
+      <div class="modal-head">
+        <svg class="ico"><use href="#i-download"/></svg>
+        <h2 id="importModalTitle">Importar Mira</h2>
+        <button class="icon-btn" id="importModalClose" style="width:26px;height:26px" aria-label="Fechar"><svg class="ico"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="settings-desc" id="importModalDesc" style="margin-bottom:8px">Cole o código da mira (CQ1:...) ou escolha um arquivo .json.</p>
+        <textarea id="importCodeText" placeholder="CQ1:..." style="width:100%;height:90px;background:#181818;border:1px solid rgba(255,255,255,.1);border-radius:4px;color:#eee;font-family:monospace;font-size:11px;padding:8px;resize:none;box-sizing:border-box"></textarea>
+        <div class="form-row" style="margin-top:12px">
+          <button class="btn primary" id="btnApplyImportCode" style="flex:1">Aplicar Código</button>
+          <button class="btn" id="btnImportFileSelect" style="flex:1">Arquivo JSON...</button>
+        </div>
+        <p class="status-line" id="importStatus" role="status"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="renameModal" role="dialog" aria-modal="true" aria-labelledby="renameModalTitle">
+    <div class="modal-card" style="width:360px">
+      <div class="modal-head">
+        <svg class="ico"><use href="#i-edit"/></svg>
+        <h2 id="renameModalTitle">Renomear Mira</h2>
+        <button class="icon-btn" id="renameModalClose" style="width:26px;height:26px" aria-label="Fechar"><svg class="ico"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <input id="renameInput" maxlength="200" placeholder="Nome da mira">
+        </div>
+        <div class="form-row" style="margin-top:12px;justify-content:flex-end">
+          <button class="btn" id="btnRenameCancel">Cancelar</button>
+          <button class="btn primary" id="btnRenameSave">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/geometry.js"></script>
+  <script src="../shared/layers.js"></script>
+  <script src="ui.js"></script>
+</body>
+</html>

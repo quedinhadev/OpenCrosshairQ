@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-26",
+  "svgCount": 16,
+  "pngSizes": [
+    16,
+    24,
+    32,
+    48,
+    64,
+    128,
+    256
+  ],
+  "pngVariants": [
+    "blue",
+    "dark",
+    "white",
+    "app"
+  ],
+  "faviconSizes": [
+    16,
+    32,
+    48
+  ],
+  "windowsIcoSizes": [
+    16,
+    24,
+    32,
+    48,
+    64,
+    128,
+    256
+  ],
+  "forbiddenSvgElements": 0,
+  "productionIconsBefore": {
+    "app/assets/icon.png": "257c2965ea482742e44b2ffa66c8a2116b71e6a8ba754dcccc9195a295f47ed1",
+    "app/assets/icon.ico": "83f81070f2d7a3109bb0aac0bc25a8227a83a4508df89e9b14a25e257c82f5dd",
+    "app/build/icon.ico": "83f81070f2d7a3109bb0aac0bc25a8227a83a4508df89e9b14a25e257c82f5dd"
+  },
+  "productionIconsAfter": {
+    "app/assets/icon.png": "257c2965ea482742e44b2ffa66c8a2116b71e6a8ba754dcccc9195a295f47ed1",
+    "app/assets/icon.ico": "83f81070f2d7a3109bb0aac0bc25a8227a83a4508df89e9b14a25e257c82f5dd",
+    "app/build/icon.ico": "83f81070f2d7a3109bb0aac0bc25a8227a83a4508df89e9b14a25e257c82f5dd"
+  },
+  "userData": "C:\\Users\\Diogo\\AppData\\Local\\Temp\\opencode\\ocq-brand-kit-electron",
+  "contactSheetSize": {
+    "width": 1640,
+    "height": 1480
+  }
+}

@@ -1,0 +1,142 @@
+/**
+ * OpenCrosshairQ — Designer Visual Polish Rework
+ * Aligns the designer iframe canvas chrome with the dark clean tech / Apple precision visual world.
+ * Does NOT alter stage calculations, DPI scaling, coordinates, or layer geometry.
+ */
+
+:root {
+  --cq-d-font: Inter, "Segoe UI", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", system-ui, sans-serif;
+  --cq-d-accent: #2F6BFF;
+  --cq-d-accent-hover: #4C82FF;
+  --cq-d-accent-active: #2456D6;
+  --cq-d-border: rgba(255, 255, 255, 0.08);
+  --cq-d-border-strong: rgba(255, 255, 255, 0.16);
+  --cq-d-hover: rgba(255, 255, 255, 0.05);
+}
+
+body {
+  font-family: var(--cq-d-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Designer Chrome Focus Visible */
+:where(button, input, select, textarea, [tabindex="0"]):focus-visible {
+  outline: 2px solid var(--cq-d-accent) !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+}
+
+/* Scrollbars in Designer */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #282C35;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #363C4A;
+}
+
+/* Top Toolbar (#dtb) */
+#dtb {
+  border-bottom: 1px solid var(--cq-d-border);
+  background: #15181F;
+}
+
+.dtb-btn {
+  transition: background-color 100ms ease, color 100ms ease, transform 100ms ease;
+}
+.dtb-btn:active {
+  transform: scale(0.97);
+}
+
+.dtb-primary {
+  background: rgba(47, 107, 255, 0.16);
+  color: #7AA6FF;
+}
+.dtb-primary:hover {
+  background: rgba(47, 107, 255, 0.26);
+  color: #A3C3FF;
+}
+
+/* Layers Drawer (#drawer) */
+#drawer {
+  background: rgba(20, 23, 30, 0.94);
+  border: 1px solid var(--cq-d-border-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+#drawerHead {
+  background: #171B23;
+  border-bottom: 1px solid var(--cq-d-border);
+}
+
+#layers li {
+  transition: background-color 100ms ease, outline-color 100ms ease;
+}
+#layers li.sel {
+  background: rgba(47, 107, 255, 0.16);
+  outline: 1px solid rgba(47, 107, 255, 0.45);
+}
+
+/* Bottom Floating Dock (#fcb) */
+#fcb {
+  background: #161A22;
+  border: 1px solid var(--cq-d-border-strong);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.50);
+}
+
+.fcb-tool {
+  transition: background-color 100ms ease, color 100ms ease, transform 100ms ease;
+}
+.fcb-tool:hover {
+  background: var(--cq-d-hover);
+}
+.fcb-tool:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+/* Right Properties Panel (#right) */
+#right {
+  background: #15181F;
+  border-left: 1px solid var(--cq-d-border);
+}
+
+.sec {
+  border-bottom: 1px solid var(--cq-d-border);
+}
+
+.sec-head {
+  transition: background-color 100ms ease;
+}
+.sec-head:hover {
+  background: var(--cq-d-hover);
+}
+
+/* Reduced Motion and Transparency */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  #drawer,
+  #fcb,
+  #right,
+  #dtb {
+    background-color: #15181F !important;
+    backdrop-filter: none !important;
+  }
+}

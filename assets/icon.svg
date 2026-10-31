@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title desc">
+<title id="title">OpenCrosshairQ — Foco óptico</title>
+<desc id="desc">Quatro cantos arredondados enquadram um ponto de precisão.</desc>
+<metadata>Geometria original OpenCrosshairQ, 2026-10-27. Direção 03 da rodada 2 escolhida pelo usuário. Nenhum desenho de terceiros incorporado.</metadata>
+<g fill="#2F6BFF">
+<path d="M96 32H64Q32 32 32 64V96H64V72Q64 64 72 64H96ZM160 32H192Q224 32 224 64V96H192V72Q192 64 184 64H160ZM224 160V192Q224 224 192 224H160V192H184Q192 192 192 184V160ZM96 224H64Q32 224 32 192V160H64V184Q64 192 72 192H96Z"/>
+<circle cx="128" cy="128" r="16"/>
+</g>
+</svg>
