@@ -36,7 +36,7 @@ app/
 ### Passos de Instalação
 1. Clone o repositório:
    ```bash
-   git clone https://github.com/diogodsgnr/OpenCrosshairQ.git
+   git clone https://github.com/quedinhadev/OpenCrosshairQ.git
    cd OpenCrosshairQ
    ```
 2. Instale as dependências:

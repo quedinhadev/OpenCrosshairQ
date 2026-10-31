@@ -81,7 +81,7 @@ Para os sistemas anti-cheat (como Vanguard, EAC, BattlEye e Ricochet), o OpenCro
 
 ## Download e Instalação (Release v0.1.0)
 
-Acesse a página de [Releases](https://github.com/diogodsgnr/OpenCrosshairQ/releases) para baixar a versão mais recente.
+Acesse a página de [Releases](https://github.com/quedinhadev/OpenCrosshairQ/releases) para baixar a versão mais recente.
 
 | Arquivo | Tamanho | Descrição |
 | :--- | :--- | :--- |
@@ -129,7 +129,7 @@ Se preferir compilar o OpenCrosshairQ por conta própria:
 ### Passo a passo
 1. Clone o repositório:
    ```bash
-   git clone https://github.com/diogodsgnr/OpenCrosshairQ.git
+   git clone https://github.com/quedinhadev/OpenCrosshairQ.git
    cd OpenCrosshairQ
    ```
 
@@ -164,7 +164,7 @@ Se preferir compilar o OpenCrosshairQ por conta própria:
 ## Como Contribuir
 
 O OpenCrosshairQ é construído para e pela comunidade. Toda ajuda é muito bem-vinda:
-- Relate problemas ou bugs via [Issues](https://github.com/diogodsgnr/OpenCrosshairQ/issues).
+- Relate problemas ou bugs via [Issues](https://github.com/quedinhadev/OpenCrosshairQ/issues).
 - Sugira novas ideias de customização ou novos presets de mira.
 - Envie correções e melhorias de código via Pull Request seguindo as diretrizes em [CONTRIBUTING.md](CONTRIBUTING.md).
 
