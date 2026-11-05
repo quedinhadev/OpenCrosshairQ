@@ -18,8 +18,9 @@ O **OpenCrosshairQ** usa sobreposição externa ao jogo, com funcionamento offli
    - O suporte opcional a detecção de cliques usa a API nativa do Windows (Raw Input / XInput em modo escuta do dispositivo local), sem sintetizar teclas ou cliques falsos (sem macros e sem automação).
 5. **Offline-First e Sem Telemetria:**
    - Miras e perfis funcionam offline e ficam no diretório `userData` do Electron.
-   - A partir do código-fonte v0.2.0, instalações NSIS consultam GitHub Releases via HTTPS para verificar e baixar atualizações. Portable e desenvolvimento não ativam esse atualizador.
-   - Reinício e instalação exigem ação explícita; URLs de atualização não são controladas pelo renderer. Hashes do feed são verificados pelo `electron-updater`; não substituem assinatura Authenticode nem proteção da conta publicadora.
+   - A partir do código-fonte v0.2.0, instalações NSIS e Portable consultam GitHub Releases via HTTPS para verificar e baixar atualizações. Desenvolvimento não ativa atualização automática.
+   - Reinício e aplicação exigem ação explícita; URLs de atualização não são controladas pelo renderer. NSIS usa `electron-updater`; Portable usa manifesto `portable-update.json`, download com limites e verificação SHA-256 antes da substituição, com backup do executável anterior.
+   - Hashes não substituem assinatura Authenticode nem proteção da conta publicadora. Falta de permissão de escrita no diretório Portable deve gerar erro, sem elevar privilégios ou alterar proteções do Windows.
    - Códigos CQ2 são dados comprimidos, não scripts. Importação limita entrada a 2 MiB e saída a 20 MiB antes de validar camadas e recompilar SVG.
    - Não há coleta de telemetria, analytics ou identificadores do computador.
 

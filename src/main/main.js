@@ -352,13 +352,18 @@ app.whenReady().then(() => {
     quitting = true;
   });
 
+  const portableExecutable = process.env.PORTABLE_EXECUTABLE_FILE;
   const updateReason = process.platform !== 'win32' ? 'platform'
     : !app.isPackaged ? 'development'
-    : process.env.PORTABLE_EXECUTABLE_FILE ? 'portable'
-    : !fs.existsSync(path.join(process.resourcesPath, 'app-update.yml')) ? 'configuration' : null;
+    : !portableExecutable && !fs.existsSync(path.join(process.resourcesPath, 'app-update.yml')) ? 'configuration' : null;
+  const updateEngine = updateReason !== null ? null : portableExecutable
+    ? require('./portable-updater').createPortableUpdater({
+      currentVersion: app.getVersion(), executable: portableExecutable,
+      cacheDir: path.join(app.getPath('cache'), 'OpenCrosshairQ-portable-updates'), app,
+    }) : require('electron-updater').autoUpdater;
   const updater = createUpdater({
     currentVersion: app.getVersion(), supported: updateReason === null, reason: updateReason,
-    autoUpdater: updateReason === null ? require('electron-updater').autoUpdater : null,
+    autoUpdater: updateEngine,
     onState: state => { if (ui && !ui.isDestroyed()) ui.webContents.send('cq:update-state', state); },
     cancelInstall: () => { quitting = false; },
     prepareInstall: () => {

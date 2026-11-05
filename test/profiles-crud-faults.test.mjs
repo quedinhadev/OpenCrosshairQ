@@ -15,6 +15,7 @@ const require = createRequire(import.meta.url);
 const localRequire = createRequire(new URL('../src/main/main.js', import.meta.url));
 const { configureProfile, loadProfiles } = require('../src/main/profiles.js');
 const tempRoot = path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode');
+fs.mkdirSync(tempRoot, { recursive: true });
 
 // ---------------------------------------------------------------------------
 // 1. Unit: configureProfile aceita espaços; rejeita segmentos inválidos

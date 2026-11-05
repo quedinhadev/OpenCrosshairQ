@@ -76,6 +76,18 @@ test('installer error event restores tray lifecycle and permits retry', async ()
   h.engine.quitAndInstall = () => { restored += 10; };
   await h.updater.install(); assert.equal(restored, 11);
 });
+test('asynchronous install helper failure restores lifecycle and keeps download retryable', async () => {
+  let restored = 0;
+  const h = harness({ cancelInstall: () => { restored++; } });
+  h.engine.emit('update-downloaded', { version: '0.2.1' });
+  h.engine.quitAndInstall = async () => { await tick(); throw new Error('helper could not start'); };
+  await h.updater.install();
+  assert.equal(restored, 1);
+  assert.equal(h.updater.getState().phase, 'downloaded');
+  h.engine.quitAndInstall = async () => { restored += 10; };
+  await h.updater.install();
+  assert.equal(restored, 11);
+});
 test('start schedules boot and six-hour checks once; dispose removes timers/listeners', async () => {
   const h = harness(); h.updater.start(); h.updater.start();
   assert.equal(h.timeouts.length, 1); assert.equal(h.timeouts[0].ms, INITIAL_DELAY_MS);

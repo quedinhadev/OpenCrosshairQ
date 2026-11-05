@@ -14,6 +14,7 @@ const require = createRequire(import.meta.url);
 const localRequire = createRequire(new URL('../src/main/main.js', import.meta.url));
 const { loadProfiles } = require('../src/main/profiles.js');
 const tempRoot = path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode');
+fs.mkdirSync(tempRoot, { recursive: true });
 
 function createBootHelper() {
   const dir = fs.mkdtempSync(path.join(tempRoot, 'cq-backend-audit-'));

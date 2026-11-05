@@ -48,12 +48,8 @@ jobs:
       - run: npm run test:electron
       - name: Build distributions without publishing
         run: npm run dist -- --publish never
-      - name: Hash release files
-        shell: pwsh
-        run: |
-          $files = Get-ChildItem dist -File | Where-Object { $_.Name -match '\.(exe|blockmap)$' -or $_.Name -eq 'latest.yml' }
-          if (!(Test-Path dist/latest.yml)) { throw 'Missing updater metadata latest.yml' }
-          $files | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+      - name: Generate verified release metadata
+        run: node scripts/generate-release-metadata.cjs
       - name: Upload draft release
         shell: pwsh
         env:
@@ -62,6 +58,7 @@ jobs:
           $tag = $env:GITHUB_REF_NAME
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { throw 'Release already exists; refusing overwrite' }
-          $files = @(Get-ChildItem dist -File | Where-Object { $_.Name -match '\.(exe|blockmap)$' -or $_.Name -in @('latest.yml', 'SHA256SUMS.txt') } | ForEach-Object FullName)
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $files = @("dist/OpenCrosshairQ-Setup-$version.exe", "dist/OpenCrosshairQ-Setup-$version.exe.blockmap", 'dist/OpenCrosshairQ-Portable.exe', 'dist/latest.yml', 'dist/portable-update.json', 'dist/SHA256SUMS.txt')
           gh release create $tag @files --verify-tag --draft --title "OpenCrosshairQ $tag" --generate-notes
           if ($LASTEXITCODE -ne 0) { throw 'Draft release upload failed' }

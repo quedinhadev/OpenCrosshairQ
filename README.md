@@ -76,8 +76,9 @@ Essa arquitetura não equivale a uma mira física de monitor e não comprova apr
   - Códigos compactos `CQ2:` funcionam offline, sem conta. Copie em **Compartilhar** no Criador ou na biblioteca; cole em **Importar** para salvar nos favoritos e aplicar.
   - Importação mantém suporte a `CQ1:` e arquivos JSON antigos. Limites: código até 2 MiB e documento descomprimido até 20 MiB, além dos limites de camadas e imagens. Retículas com imagens podem gerar códigos grandes.
 - **Atualizações (código-fonte v0.2.0):**
-  - Instalação NSIS verifica releases estáveis no GitHub após iniciar e a cada 6 horas, baixando em segundo plano. Instalação e reinício exigem confirmação do usuário.
-  - Portable e modo de desenvolvimento não fazem atualização automática. Versão publicada v0.1.0 precisa de atualização manual para receber o atualizador.
+  - Instalador NSIS e Portable verificam releases estáveis no GitHub após iniciar e a cada 6 horas, baixando em segundo plano. Aplicar atualização e reiniciar exigem confirmação do usuário.
+  - Portable verifica SHA-256, substitui seu próprio executável mantendo backup e não instala o aplicativo no Windows. Pasta precisa permitir escrita; erros preservam versão anterior e dados locais.
+  - Modo de desenvolvimento não faz atualização automática. Versão v0.1.0 precisa de atualização manual para receber o atualizador.
 - **Servidor HTTP local:**
   - Expõe status em `127.0.0.1`. Ainda não fornece página de mira para Browser Source nem configura OBS automaticamente.
 - **Suporte Multimonitor e DPI Dinâmico:**
@@ -85,26 +86,24 @@ Essa arquitetura não equivale a uma mira física de monitor e não comprova apr
 
 ---
 
-## Download e Instalação (Release v0.1.0)
+## Download e Instalação (v0.2.0)
 
 Acesse a página de [Releases](https://github.com/quedinhadev/OpenCrosshairQ/releases) para baixar a versão mais recente.
 
 | Arquivo | Tamanho | Descrição |
 | :--- | :--- | :--- |
-| **`OpenCrosshairQ-Setup-0.1.0.exe`** | ~116 MB | Instalador completo do Windows. Cria atalhos no Menu Iniciar/Área de Trabalho e inclui assistente de desinstalação. |
+| **`OpenCrosshairQ-Setup-0.2.0.exe`** | ~116 MB | Instalador completo do Windows. Cria atalhos no Menu Iniciar/Área de Trabalho e inclui assistente de desinstalação. |
 | **`OpenCrosshairQ-Portable.exe`** | ~105 MB | Versão portátil. Sem necessidade de instalação: basta baixar, colocar em qualquer pasta e executar. |
 
 ### Verificação de Integridade (SHA-256)
 
-Para garantir a autenticidade dos binários baixados, compare o hash SHA-256 no PowerShell:
+Para conferir integridade dos binários baixados, compare o hash SHA-256 com `SHA256SUMS.txt` da mesma release no PowerShell. Hash não substitui assinatura do editor:
 ```powershell
-Get-FileHash -Algorithm SHA256 OpenCrosshairQ-Setup-0.1.0.exe
+Get-FileHash -Algorithm SHA256 OpenCrosshairQ-Setup-0.2.0.exe
 Get-FileHash -Algorithm SHA256 OpenCrosshairQ-Portable.exe
 ```
 
-Hashes oficiais da versão v0.1.0:
-- `OpenCrosshairQ-Setup-0.1.0.exe`: `1f4048084a9950a53797cff60230f821d4423b5eddcd94748a44bb5137b7914d`
-- `OpenCrosshairQ-Portable.exe`: `9525835f955a24094040ae9c3e1e0798a26ed1aa3dd8ffc5afa5db8a230d0dcb`
+Hashes de cada versão ficam no arquivo `SHA256SUMS.txt` anexado à respectiva release; não compare executáveis novos com hashes de versões anteriores.
 
 > **Nota sobre o Windows SmartScreen:** Por se tratar de um projeto open-source novo sem certificado digital pago (EV Code Signing), o Windows Defender SmartScreen pode exibir um aviso azul na primeira execução. Basta clicar em **"Mais informações"** e depois em **"Executar assim mesmo"**. O código-fonte é 100% auditável neste repositório.
 
@@ -163,7 +162,7 @@ Se preferir compilar o OpenCrosshairQ por conta própria:
    ```bash
    npm run dist
    ```
-   Os executáveis gerados ficarão disponíveis na pasta `dist/`, junto de `latest.yml` e `.blockmap` necessários ao atualizador NSIS.
+   Os executáveis gerados ficarão disponíveis na pasta `dist/`, junto de `latest.yml` e `.blockmap` necessários ao atualizador NSIS. Depois, execute `node scripts/generate-release-metadata.cjs` para gerar `portable-update.json` e `SHA256SUMS.txt` a partir dos binários finais.
 
 ### Publicar atualização
 

@@ -1,4 +1,4 @@
-// Windows NSIS updates. No credentials or renderer-controlled download URLs.
+// Windows NSIS/Portable lifecycle. No credentials or renderer-controlled download URLs.
 // Dependency injection keeps lifecycle/concurrency testable without network/Electron.
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const INITIAL_DELAY_MS = 15000;
@@ -71,7 +71,7 @@ function createUpdater({ currentVersion, supported = false, reason = null, autoU
       // Flush application data before closing windows (quitAndInstall closes them first).
       await prepareInstall();
       publish({ phase: 'installing', error: null });
-      autoUpdater.quitAndInstall(false, true);
+      await autoUpdater.quitAndInstall(false, true);
     } catch (error) {
       publish({ phase: 'downloaded' });
       report(error);

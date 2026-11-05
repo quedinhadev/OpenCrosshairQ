@@ -14,6 +14,7 @@ const { loadProfiles } = require('../src/main/profiles.js');
 const source = fs.readFileSync(new URL('../src/main/main.js', import.meta.url), 'utf8');
 const localRequire = createRequire(new URL('../src/main/main.js', import.meta.url));
 const tempRoot = path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode');
+fs.mkdirSync(tempRoot, { recursive: true });
 const monitor = () => ({ getStatus: () => ({ available: false, foreground: null, error: null }), start() {}, stop() {} });
 
 // Bandeja falsa: handlers/listeners capturados; setContextMenu lança após
