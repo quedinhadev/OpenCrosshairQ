@@ -83,6 +83,32 @@ const sizeLimit = async () => {
   await assert.rejects(() => Share.encodeShareCode(payload), /2 MiB/);
 };
 
+// Load exactly as Chromium does: no require/module, real Web Streams APIs.
+const vm = require('node:vm');
+const browser = { self: {}, Uint8Array, Blob, Response, CompressionStream, DecompressionStream, TextEncoder, TextDecoder, btoa, atob };
+vm.runInNewContext(require('node:fs').readFileSync(new URL('../src/shared/share.js', import.meta.url), 'utf8'), browser);
+const WebShare = browser.self.CQShare;
+const payload = { format: 'CQ1', name: 'ação ♥', layers: [] };
+assert.deepEqual(JSON.parse(JSON.stringify(await WebShare.decodeShareCode(await Share.encodeShareCode(payload)))), payload);
+assert.deepEqual(await Share.decodeShareCode(await WebShare.encodeShareCode(payload)), payload);
+const rawCode = async json => 'CQ2:' + Share.bytesToBase64Url(await Share.deflateRaw(new TextEncoder().encode(json)));
+for (const codec of [Share, WebShare]) {
+  const overhead = JSON.stringify({ format: 'CQ1', padding: '' }).length;
+  const exact = { format: 'CQ1', padding: 'x'.repeat(Share.MAX_DOCUMENT_BYTES - overhead) };
+  const exactCode = await codec.encodeShareCode(exact);
+  assert.equal((await codec.decodeShareCode(exactCode)).padding.length, exact.padding.length);
+  exact.padding += 'x';
+  await assert.rejects(() => codec.encodeShareCode(exact), /20 MiB/);
+  const bomb = await rawCode(JSON.stringify(exact));
+  assert.ok(bomb.length < 100000, 'small compressed input exceeds document budget');
+  await assert.rejects(() => codec.decodeShareCode(bomb), /20 MiB/);
+  for (const invalid of [{ layers: 'bad' }, { model: [] }, { name: 42 }, ...['CQ2', false, 0, '', null].map(format => ({ format }))]) {
+    await assert.rejects(() => codec.encodeShareCode(invalid));
+    const invalidCode = await rawCode(JSON.stringify(invalid));
+    await assert.rejects(() => codec.decodeShareCode(invalidCode));
+  }
+}
+
 await assertBytesContract();
 await roundtrip();
 await compact();

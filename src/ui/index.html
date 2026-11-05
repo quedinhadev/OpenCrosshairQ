@@ -1119,8 +1119,15 @@
                   </div>
                   <div class="settings-row">
                     <span class="row-icon"><svg class="ico"><use href="#i-refresh"/></svg></span>
-                    <div class="settings-copy"><div class="settings-label">Verificar atualizações</div><div class="settings-desc">Verificação online desativada neste build.</div></div>
-                    <div class="settings-action"><button class="btn" id="btnCheckUpdates" disabled>VERIFICAR</button></div>
+                    <div class="settings-copy">
+                      <div class="settings-label" id="lblCheckUpdates">Verificar atualizações</div>
+                      <div class="settings-desc" id="descCheckUpdates">Verifica se há novas versões disponíveis para o aplicativo.</div>
+                      <p class="status-line" id="updateStatus" role="status" aria-live="polite"></p>
+                    </div>
+                    <div class="settings-action">
+                      <button class="btn primary" id="btnInstallUpdate" hidden style="display:none">INSTALAR</button>
+                      <button class="btn" id="btnCheckUpdates" disabled>VERIFICAR</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1241,7 +1248,7 @@
         <div id="optPanelDisplay" style="display:none">
           <div class="stream-panel">
             <h2 class="pos-title">Modos de Exibição</h2>
-            <p class="pos-desc">O OpenCrosshairQ funciona como uma janela de sobreposição transparente (desktop overlay). Jogos em modo tela cheia exclusiva (Exclusive Fullscreen) cobrem janelas normais do Windows; configure o jogo como Janela Sem Bordas (Borderless Windowed) para visualizar a mira. Por ser uma sobreposição externa e não injetar código na memória do jogo, não é detectada como cheat nem interfere com softwares anti-cheat.</p>
+            <p class="pos-desc">O OpenCrosshairQ funciona como uma janela de sobreposição transparente (desktop overlay). Jogos em modo tela cheia exclusiva (Exclusive Fullscreen) cobrem janelas normais do Windows; configure o jogo como Janela Sem Bordas (Borderless Windowed) para visualizar a mira. O aplicativo opera sem injeção de memória nem modificação de arquivos, mas a compatibilidade e a permissão de sobreposições dependem das regras e dos sistemas anti-cheat de cada jogo; o uso não garante ausência de restrições ou punições.</p>
             <div class="settings-section">
               <div class="settings-row">
                 <span class="row-icon"><svg class="ico"><use href="#i-monitor"/></svg></span>

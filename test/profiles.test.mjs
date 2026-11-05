@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 const require = createRequire(import.meta.url);
 const { saveProfile, loadProfiles, deleteProfileFile, configureProfile } = require('../src/main/profiles.js');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-profiles-'));
+const tempRoot = path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode');
+const dir = fs.mkdtempSync(path.join(tempRoot, 'cq-profiles-'));
 try {
   const registry = { default: { id: 'default', settings: {} }, a: { id: 'a', settings: {} }, b: { id: 'b', settings: {} } };
   const options = { id: 'a', processPath: 'C:\\Games\\Game.exe', hideCrosshairWhenUnfocused: true };
@@ -52,7 +52,7 @@ try {
 } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 
 // Run main handlers with window/native stubs: no Electron process or visible window.
-const ipcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-main-profiles-'));
+const ipcDir = fs.mkdtempSync(path.join(tempRoot, 'cq-main-profiles-'));
 try {
   const handlers = new Map();
   const events = new Map();
@@ -62,10 +62,10 @@ try {
   let acceptShortcut = true;
   const display = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 };
   class Window {
-    constructor() { this.webContents = { send: (channel, state) => sends.push({ channel, state }), setZoomFactor() {} }; }
+    constructor() { this.webContents = { mainFrame: {}, send: (channel, state) => sends.push({ channel, state }), setZoomFactor() {} }; }
     setIgnoreMouseEvents() {} setAlwaysOnTop() {} loadFile() {} once() {} on() {} setBounds() {} isDestroyed() { return false; }
   }
-  const app = { whenReady: () => Promise.resolve(), getPath: () => ipcDir, once() {}, on() {} };
+  const app = { isPackaged: false, getVersion: () => '0.1.0', whenReady: () => Promise.resolve(), getPath: () => ipcDir, once() {}, on() {} };
   const electron = {
     app, BrowserWindow: Window,
     ipcMain: { on: (channel, fn) => events.set(channel, fn), handle: (channel, fn) => handlers.set(channel, fn) },
@@ -90,7 +90,7 @@ try {
       if (name === './input') return { createInputMonitor: monitor };
       return localRequire(name);
     },
-    __dirname: path.resolve('src/main'), console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+    __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
   });
   await new Promise(resolve => setImmediate(resolve));
   const get = () => handlers.get('cq:get-state')();
@@ -212,7 +212,7 @@ try {
         if (name === './input') return { createInputMonitor: monitor };
         return localRequire(name);
       },
-      __dirname: path.resolve('src/main'), console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+      __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(get().shortcutStatus.registered, false);
@@ -245,7 +245,7 @@ try {
       if (name === './input') return { createInputMonitor: monitor };
       return localRequire(name);
     },
-    __dirname: path.resolve('src/main'), console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+    __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
   });
   await new Promise(resolve => setImmediate(resolve));
   send('cq:set', { scale: 2 });

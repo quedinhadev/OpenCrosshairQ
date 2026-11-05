@@ -6,13 +6,13 @@
 
 <p align="center">
   <strong>Mira externa de alta precisão, gratuita, open-source e 100% offline-first para Windows.</strong><br>
-  Uma alternativa livre e segura ao CrosshairX, sem risco de banimento por anti-cheat e sem telemetria.
+  Alternativa livre ao CrosshairX, sem injeção no jogo e sem telemetria. Uso sujeito às regras de cada jogo.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License MIT">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6.svg" alt="Windows Platform">
-  <img src="https://img.shields.io/badge/tests-266%20passing-brightgreen.svg" alt="Tests 266 Passing">
+  <img src="https://img.shields.io/badge/tests-296%20passing-brightgreen.svg" alt="Tests 296 Passing">
   <img src="https://img.shields.io/badge/electron-45.0.0-47848F.svg" alt="Electron">
   <img src="https://img.shields.io/badge/offline--first-100%25-success.svg" alt="Offline-First">
 </p>
@@ -38,7 +38,7 @@ Muitos softwares comerciais de miras cobram assinaturas ou valores altos, exigem
 
 O **OpenCrosshairQ** foi criado pela comunidade para ser:
 1. **100% Gratuito e Código Aberto:** Todo o código é aberto sob licença MIT. Sem paywalls, sem assinaturas.
-2. **Offline-First e Privativo:** Não envia dados para a nuvem, não exige login e não possui rastreadores ou telemetria.
+2. **Offline-First e Privativo:** Miras e perfis ficam locais, sem login, rastreadores ou telemetria. Atualizador consulta GitHub via HTTPS; funcionamento da mira não exige conexão.
 3. **Leve e Otimizado:** Desenvolvido em Electron com aceleração gráfica acelerada e módulo nativo C Win32 para consumo mínimo de CPU/GPU.
 4. **Precisão de Pixel:** Renderização matemática de subpixel com compensação para monitores de alto DPI e taxas de atualização elevadas.
 
@@ -47,13 +47,13 @@ O **OpenCrosshairQ** foi criado pela comunidade para ser:
 ## Segurança e Anti-Cheat
 
 ### O OpenCrosshairQ pode causar banimento?
-**Não.** O OpenCrosshairQ opera de forma **100% passiva e externa**:
+Não existe garantia de ausência de punição. Consulte as regras do jogo e torneio antes de usar uma mira externa. O OpenCrosshairQ opera como sobreposição externa:
 - **Zero injeção de DLLs ou threads** em jogos.
 - **Zero leitura ou gravação de memória** de processos externos (`PROCESS_VM_READ` ou `PROCESS_VM_WRITE`).
 - **Zero hooking de gráficos** (não intercepta chamadas de DirectX, Vulkan ou OpenGL).
 - O overlay é uma janela padrão do Windows com propriedades nativas transparentes (`WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW`). Todos os cliques passam diretamente para o jogo abaixo (click-through nativo).
 
-Para os sistemas anti-cheat (como Vanguard, EAC, BattlEye e Ricochet), o OpenCrosshairQ é tecnicamente indistinguível da mira física embutida nos monitores gamer modernos.
+Essa arquitetura não equivale a uma mira física de monitor e não comprova aprovação por Vanguard, EAC, BattlEye ou outros anti-cheats. Compatibilidade depende das políticas de cada fornecedor.
 
 > *Consulte [SECURITY.md](SECURITY.md) para detalhes da arquitetura técnica de segurança.*
 
@@ -72,8 +72,14 @@ Para os sistemas anti-cheat (como Vanguard, EAC, BattlEye e Ricochet), o OpenCro
   - Troca automática de mira com base no executável em primeiro plano (detecção opcional via addon nativo C Win32).
 - **Atalhos Globais:**
   - Oculte ou exiba a mira a qualquer momento via tecla de atalho (`Alt+Shift+Z` padrão, configurável).
-- **Modo Streamer (OBS / XSplit):**
-  - Servidor HTTP local seguro em `127.0.0.1` para capturar a mira via *Browser Source* no OBS Studio sem poluir a sua gravação com janelas do desktop.
+- **Compartilhamento por código (código-fonte v0.2.0):**
+  - Códigos compactos `CQ2:` funcionam offline, sem conta. Copie em **Compartilhar** no Criador ou na biblioteca; cole em **Importar** para salvar nos favoritos e aplicar.
+  - Importação mantém suporte a `CQ1:` e arquivos JSON antigos. Limites: código até 2 MiB e documento descomprimido até 20 MiB, além dos limites de camadas e imagens. Retículas com imagens podem gerar códigos grandes.
+- **Atualizações (código-fonte v0.2.0):**
+  - Instalação NSIS verifica releases estáveis no GitHub após iniciar e a cada 6 horas, baixando em segundo plano. Instalação e reinício exigem confirmação do usuário.
+  - Portable e modo de desenvolvimento não fazem atualização automática. Versão publicada v0.1.0 precisa de atualização manual para receber o atualizador.
+- **Servidor HTTP local:**
+  - Expõe status em `127.0.0.1`. Ainda não fornece página de mira para Browser Source nem configura OBS automaticamente.
 - **Suporte Multimonitor e DPI Dinâmico:**
   - Alinhamento automático ao centro geométrico físico com suporte a escalas de 100%, 125%, 150%, 200% e multitelas.
 
@@ -157,7 +163,17 @@ Se preferir compilar o OpenCrosshairQ por conta própria:
    ```bash
    npm run dist
    ```
-   Os executáveis gerados ficarão disponíveis na pasta `dist/`.
+   Os executáveis gerados ficarão disponíveis na pasta `dist/`, junto de `latest.yml` e `.blockmap` necessários ao atualizador NSIS.
+
+### Publicar atualização
+
+O workflow `.github/workflows/release.yml` valida a tag contra `package.json`, testa, compila o addon e gera **release draft** com instaladores, metadados e hashes. Tag de exemplo: `v0.2.0`. Revise e publique o draft somente após validar os binários; drafts não chegam ao atualizador.
+
+- Nunca inclua `GH_TOKEN` no aplicativo. Workflow usa token temporário do GitHub Actions apenas para publicar.
+- Preserve `appId`, nome do produto e repositório entre versões. Não substitua arquivos de release publicada.
+- `latest.yml` referencia instalador e hash SHA-512; publique também `.blockmap`. Não edite hashes manualmente.
+- Sem certificado Authenticode, hash via HTTPS não comprova identidade do editor. Proteja conta GitHub e permissões de publicação; não desative verificações de assinatura do atualizador.
+- Antes de distribuir, teste atualização entre duas versões NSIS em ambiente isolado, incluindo preservação de perfis, instalação cancelada e aplicativo na bandeja.
 
 ---
 

@@ -25,6 +25,37 @@ app.whenReady().then(async () => {
     const ui = windows.find(win => new URL(win.webContents.getURL()).pathname.endsWith('/ui/index.html'));
     assert.ok(ui, 'UI loaded');
     const run = script => ui.webContents.executeJavaScript(script);
+    const updateState = await run('window.cq.getUpdateState()');
+    assert.equal(updateState.supported, false, 'development build never contacts updater feed');
+    assert.equal(updateState.reason, 'development');
+    assert.equal(updateState.currentVersion, app.getVersion());
+    assert.deepEqual(await run('window.cq.checkForUpdates()'), updateState);
+    assert.deepEqual(await run('window.cq.installUpdate()'), updateState);
+    const beforeShare = await run('window.cq.getState()');
+    const browserShare = await run(`(async () => {
+      const payload = { format: 'CQ1', name: 'Mira ç ♥', layers: [window.CQLayers.newModelLayer()] };
+      const code = await window.CQShare.encodeShareCode(payload);
+      const decoded = await window.CQShare.decodeShareCode(code);
+      return { code, payload, decoded };
+    })()`);
+    assert.ok(browserShare.code.startsWith('CQ2:'));
+    assert.deepEqual(browserShare.decoded, browserShare.payload, 'real Chromium compression stream roundtrip');
+    const importedShare = await run(`(async () => {
+      const code = await window.CQShare.encodeShareCode({ format: 'CQ1', name: 'Smoke CQ2 import', layers: [] , drawing: '' });
+      document.getElementById('btnImport').click();
+      document.getElementById('importCodeText').value = code;
+      document.getElementById('btnApplyImportCode').click();
+      const deadline = Date.now() + 3000;
+      while (document.getElementById('importModal').classList.contains('on')) {
+        if (Date.now() > deadline) throw new Error('CQ2 import timeout: ' + document.getElementById('importStatus').textContent);
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      return JSON.parse(localStorage.getItem('cq.savedCustomCrosshairs')).find(item => item.name === 'Smoke CQ2 import');
+    })()`);
+    assert.equal(importedShare.name, 'Smoke CQ2 import');
+    assert.equal(importedShare.drawing, '');
+    assert.equal(importedShare.layers.length, 0);
+    await run(`(async () => { window.cq.set(${JSON.stringify({ model: beforeShare.model, layers: beforeShare.layers, drawing: beforeShare.drawing })}); return window.cq.getState(); })()`);
     const initialBindings = (await run('window.cq.getState()')).keybinds;
     const { globalShortcut } = require('electron');
     const combo = ['F23', 'F22', 'F21'].map(key => `Control+Alt+Shift+${key}`).find(key => !globalShortcut.isRegistered(key));

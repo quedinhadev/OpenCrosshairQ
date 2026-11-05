@@ -1,0 +1,67 @@
+name: Release Windows
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Validate release version
+        shell: pwsh
+        run: |
+          $expected = 'v' + (Get-Content package.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne $expected) { throw "Tag must match package.json: $expected" }
+      - run: npm ci
+      - run: npm test
+      - name: Fetch verified Node-API headers
+        shell: pwsh
+        run: |
+          $version = node -p "process.version"
+          $archive = "node-$version-headers.tar.gz"
+          $base = "https://nodejs.org/dist/$version"
+          Invoke-WebRequest "$base/$archive" -OutFile "$env:RUNNER_TEMP/$archive"
+          $checksums = (Invoke-WebRequest "$base/SHASUMS256.txt").Content
+          $match = [regex]::Match($checksums, "(?m)^([a-f0-9]{64})\s+$([regex]::Escape($archive))\r?$")
+          if (!$match.Success) { throw 'Header checksum not found' }
+          $actual = (Get-FileHash "$env:RUNNER_TEMP/$archive" -Algorithm SHA256).Hash
+          if ($actual -ne $match.Groups[1].Value) { throw 'Header checksum mismatch' }
+          tar -xzf "$env:RUNNER_TEMP/$archive" -C "$env:RUNNER_TEMP"
+          if ($LASTEXITCODE -ne 0) { throw 'Header extraction failed' }
+          "NODE_API_INCLUDE=$env:RUNNER_TEMP/node-$version/include/node" >> $env:GITHUB_ENV
+      - name: Build native addon
+        shell: pwsh
+        run: ./native/build.ps1 -NodeInclude $env:NODE_API_INCLUDE
+      - run: npm run test:electron
+      - name: Build distributions without publishing
+        run: npm run dist -- --publish never
+      - name: Hash release files
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem dist -File | Where-Object { $_.Name -match '\.(exe|blockmap)$' -or $_.Name -eq 'latest.yml' }
+          if (!(Test-Path dist/latest.yml)) { throw 'Missing updater metadata latest.yml' }
+          $files | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+      - name: Upload draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Release already exists; refusing overwrite' }
+          $files = @(Get-ChildItem dist -File | Where-Object { $_.Name -match '\.(exe|blockmap)$' -or $_.Name -in @('latest.yml', 'SHA256SUMS.txt') } | ForEach-Object FullName)
+          gh release create $tag @files --verify-tag --draft --title "OpenCrosshairQ $tag" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release upload failed' }

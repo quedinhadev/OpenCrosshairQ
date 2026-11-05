@@ -2,7 +2,7 @@
 
 ## Arquitetura de Segurança e Relação com Anti-Cheats
 
-O **OpenCrosshairQ** foi projetado desde a primeira linha de código para operar de maneira **100% passiva, offline e transparente ao sistema operacional**.
+O **OpenCrosshairQ** usa sobreposição externa ao jogo, com funcionamento offline-first e sem injeção no processo do jogo.
 
 ### Como o OpenCrosshairQ Funciona Tecnicamente
 1. **Janela de Overlay Nativa do Windows:**
@@ -16,13 +16,15 @@ O **OpenCrosshairQ** foi projetado desde a primeira linha de código para operar
    - O executável não lê estados internos de partidas, posições de inimigos ou variáveis do jogo.
 4. **Isolamento de Entrada:**
    - O suporte opcional a detecção de cliques usa a API nativa do Windows (Raw Input / XInput em modo escuta do dispositivo local), sem sintetizar teclas ou cliques falsos (sem macros e sem automação).
-5. **100% Offline e Sem Telemetria:**
-   - O aplicativo não faz requisições a servidores externos.
-   - Seus perfis e configurações são salvos localmente em `%APPDATA%\crosshairq`.
+5. **Offline-First e Sem Telemetria:**
+   - Miras e perfis funcionam offline e ficam no diretório `userData` do Electron.
+   - A partir do código-fonte v0.2.0, instalações NSIS consultam GitHub Releases via HTTPS para verificar e baixar atualizações. Portable e desenvolvimento não ativam esse atualizador.
+   - Reinício e instalação exigem ação explícita; URLs de atualização não são controladas pelo renderer. Hashes do feed são verificados pelo `electron-updater`; não substituem assinatura Authenticode nem proteção da conta publicadora.
+   - Códigos CQ2 são dados comprimidos, não scripts. Importação limita entrada a 2 MiB e saída a 20 MiB antes de validar camadas e recompilar SVG.
    - Não há coleta de telemetria, analytics ou identificadores do computador.
 
 ### Risco de Banimento perante Anti-Cheats (EAC, BattlEye, Vanguard, Ricochet, etc.)
-Em termos técnicos, o OpenCrosshairQ funciona para o sistema exatamente como a funcionalidade de mira de hardware embutida em monitores gamer modernos: ele apenas desenha pixels por cima da tela da sua área de trabalho.
+Uma janela de software não é equivalente a uma mira física de monitor. Ausência de injeção não comprova aprovação por anti-cheats e não garante ausência de punição; regras e compatibilidade dependem de cada jogo e torneio.
 
 > **Importante:** Embora o OpenCrosshairQ não viole a integridade de arquivos de jogos nem injete código, verifique sempre os Termos de Serviço (ToS) específicos de cada jogo ou liga competitiva quanto ao uso de sobreposições visuais externas de terceiros.
 

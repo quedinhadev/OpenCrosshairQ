@@ -1,6 +1,6 @@
 {
   "name": "open-crosshairq",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenCrosshairQ — crosshair overlay open-source, gratuita e offline-first",
   "author": "OpenCrosshairQ Team",
   "main": "src/main/main.js",
@@ -18,6 +18,7 @@
   "build": {
     "appId": "com.opencrosshairq.app",
     "productName": "OpenCrosshairQ",
+    "publish": [{ "provider": "github", "owner": "quedinhadev", "repo": "OpenCrosshairQ" }],
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -56,5 +57,8 @@
   "devDependencies": {
     "electron": "^45.0.0",
     "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }

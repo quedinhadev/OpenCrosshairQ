@@ -1191,7 +1191,7 @@
     }
   });
   $('btnShare').addEventListener('click', async () => {
-    const payload = { format: 'CQ1', name: $('docName').value || 'Mira', layers: JSON.parse(JSON.stringify(layers)) };
+    const payload = { format: 'CQ1', name: $('docName').value || 'Mira', layers: JSON.parse(JSON.stringify(layers)), ...(layers.length === 0 ? { drawing: '' } : {}) };
     const share = (typeof window !== 'undefined' && window.CQShare) || null;
     if (share && typeof share.encodeShareCode === 'function') {
       try {

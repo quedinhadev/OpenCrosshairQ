@@ -7,7 +7,6 @@
 // Falhas injetadas via monkey-patch de fs em userData temporário; sem Electron.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
@@ -15,6 +14,7 @@ import vm from 'node:vm';
 const require = createRequire(import.meta.url);
 const localRequire = createRequire(new URL('../src/main/main.js', import.meta.url));
 const { configureProfile, loadProfiles } = require('../src/main/profiles.js');
+const tempRoot = path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode');
 
 // ---------------------------------------------------------------------------
 // 1. Unit: configureProfile aceita espaços; rejeita segmentos inválidos
@@ -52,11 +52,11 @@ function boot(dir) {
   let evalNative = null;
   const display = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 };
   class Window {
-    constructor() { this.webContents = { send: (channel, state) => sends.push({ channel, state }), setZoomFactor() {} }; }
+    constructor() { this.webContents = { mainFrame: {}, send: (channel, state) => sends.push({ channel, state }), setZoomFactor() {} }; }
     setIgnoreMouseEvents() {} setAlwaysOnTop() {} loadFile() {} once() {} on() {} setBounds() {}
     isDestroyed() { return false; }
   }
-  const app = { whenReady: () => Promise.resolve(), getPath: () => dir, once() {}, on() {} };
+  const app = { isPackaged: false, getVersion: () => '0.1.0', whenReady: () => Promise.resolve(), getPath: () => dir, once() {}, on() {} };
   const electron = {
     app, BrowserWindow: Window, Tray: null, Menu: null,
     ipcMain: { on: (c, f) => events.set(c, f), handle: (c, f) => handlers.set(c, f) },
@@ -71,7 +71,7 @@ function boot(dir) {
       if (name === './input') return { createInputMonitor: inputMonitor };
       return localRequire(name);
     },
-    __dirname: path.resolve('src/main'), console,
+    __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console,
     setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
   });
   return {
@@ -83,7 +83,7 @@ function boot(dir) {
   };
 }
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-crud-faults-'));
+const root = fs.mkdtempSync(path.join(tempRoot, 'cq-crud-faults-'));
 const profileFile = (dir, id) => path.join(dir, 'profiles', `${id}.json`);
 const diskProfile = (dir, id) => JSON.parse(fs.readFileSync(profileFile(dir, id), 'utf8'));
 const diskJsonFiles = (dir) => fs.readdirSync(path.join(dir, 'profiles')).filter((f) => f.endsWith('.json')).sort();

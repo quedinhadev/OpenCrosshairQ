@@ -6,7 +6,6 @@
 // BACK13: require node:fs inline movido para o topo do módulo.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
@@ -14,12 +13,17 @@ import vm from 'node:vm';
 const require = createRequire(import.meta.url);
 const localRequire = createRequire(new URL('../src/main/main.js', import.meta.url));
 const { loadProfiles } = require('../src/main/profiles.js');
+const tempRoot = path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode');
 
 function createBootHelper() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-backend-audit-'));
+  const dir = fs.mkdtempSync(path.join(tempRoot, 'cq-backend-audit-'));
   const handlers = new Map();
   const events = new Map();
   const appEvents = new Map();
+  const addAppListener = (name, fn) => {
+    const previous = appEvents.get(name);
+    appEvents.set(name, previous ? (...args) => { previous(...args); fn(...args); } : fn);
+  };
   const sends = [];
   const windows = [];
   let fgStatus = { available: false, foreground: null, error: null };
@@ -28,6 +32,7 @@ function createBootHelper() {
   class Window {
     constructor() {
       this.webContents = {
+        mainFrame: {},
         send: (channel, payload) => sends.push({ channel, payload, window: this }),
         setZoomFactor() {},
       };
@@ -54,11 +59,12 @@ function createBootHelper() {
   const displays = [display1, display2];
 
   const app = {
-    isPackaged: true,
+    isPackaged: false,
+    getVersion: () => '0.1.0',
     whenReady: () => Promise.resolve(),
     getPath: () => dir,
-    once: (n, f) => appEvents.set(n, f),
-    on: (n, f) => appEvents.set(n, f),
+    once: addAppListener,
+    on: addAppListener,
     quit: () => {},
   };
 
@@ -108,6 +114,7 @@ function createBootHelper() {
       return localRequire(name);
     },
     __dirname: path.resolve('src/main'),
+    process: { platform: 'win32', env: {} },
     console,
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id),
@@ -367,8 +374,9 @@ function createBootHelper() {
     await new Promise((r) => setImmediate(r));
     const startHandler = env.handlers.get('cq:streamer-start');
     assert.ok(startHandler, 'cq:streamer-start registrado');
-    const started = await startHandler({}, { port: 29991 });
+    const started = await startHandler({}, { port: 0 });
     assert.equal(started.running, true, 'streamer em execução antes do quit');
+    assert.ok(started.port > 0, 'sistema escolhe porta livre');
     assert.equal(Streamer.getStatus().running, true);
 
     const beforeQuit = env.appEvents.get('before-quit');

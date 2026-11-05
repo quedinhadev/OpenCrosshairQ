@@ -180,7 +180,7 @@
       btnCopyShareCode: 'Copiar Código',
       btnExportShareFile: 'Salvar JSON',
       importModalTitle: 'Importar Mira',
-      importModalDesc: 'Cole o código da mira (CQ1:...) ou escolha um arquivo .json.',
+      importModalDesc: 'Cole o código da mira (CQ2:...) ou escolha um arquivo .json. Códigos antigos CQ1: também funcionam.',
       btnApplyImportCode: 'Aplicar Código',
       btnImportFileSelect: 'Arquivo JSON...',
       renameModalTitle: 'Renomear Mira',
@@ -228,6 +228,19 @@
       kbAimHold: 'Ocultar Mira (Segurar)',
       kbAimToggle: 'Alternar Mira',
       kbAimOff: 'Desligado',
+      lblCheckUpdates: 'Verificar atualizações',
+      descCheckUpdates: 'Verifica se há novas versões disponíveis para o aplicativo.',
+      btnCheckUpdates: 'VERIFICAR',
+      btnInstallUpdate: 'INSTALAR',
+      updateStatusChecking: 'Verificando atualizações...',
+      updateStatusAvailable: (v) => v ? `Nova versão ${v} disponível. Baixando...` : 'Nova versão disponível. Baixando...',
+      updateStatusDownloading: (p) => p != null ? `Baixando atualização: ${p}%...` : 'Baixando atualização...',
+      updateStatusDownloaded: (v) => v ? `Versão ${v} baixada e pronta para instalar.` : 'Atualização baixada e pronta para instalar.',
+      updateStatusNotAvailable: 'Você já está usando a versão mais recente.',
+      updateStatusInstalling: 'Reiniciando para instalar atualização...',
+      updateStatusUnsupported: 'Atualizações automáticas indisponíveis neste ambiente.',
+      updateStatusError: (err) => `Erro na atualização: ${err || 'Falha ao atualizar.'}`,
+      updateConfirmInstall: 'O aplicativo será fechado e reiniciado para instalar a atualização. Deseja continuar?',
     },
     'en-US': {
       navCrosshairs: 'Crosshairs',
@@ -248,7 +261,7 @@
       btnCopyShareCode: 'Copy Code',
       btnExportShareFile: 'Save JSON',
       importModalTitle: 'Import Crosshair',
-      importModalDesc: 'Paste the crosshair code (CQ1:...) or choose a .json file.',
+      importModalDesc: 'Paste the crosshair code (CQ2:...) or choose a .json file. Legacy CQ1: codes are also supported.',
       btnApplyImportCode: 'Apply Code',
       btnImportFileSelect: 'JSON File...',
       renameModalTitle: 'Rename Crosshair',
@@ -296,6 +309,19 @@
       kbAimHold: 'Hide Crosshair (Hold)',
       kbAimToggle: 'Toggle Crosshair',
       kbAimOff: 'Off',
+      lblCheckUpdates: 'Check for updates',
+      descCheckUpdates: 'Check for available application updates.',
+      btnCheckUpdates: 'CHECK',
+      btnInstallUpdate: 'INSTALL',
+      updateStatusChecking: 'Checking for updates...',
+      updateStatusAvailable: (v) => v ? `New version ${v} available. Downloading...` : 'New version available. Downloading...',
+      updateStatusDownloading: (p) => p != null ? `Downloading update: ${p}%...` : 'Downloading update...',
+      updateStatusDownloaded: (v) => v ? `Version ${v} downloaded and ready to install.` : 'Update downloaded and ready to install.',
+      updateStatusNotAvailable: 'You are using the latest version.',
+      updateStatusInstalling: 'Restarting to install update...',
+      updateStatusUnsupported: 'Automatic updates are not available in this environment.',
+      updateStatusError: (err) => `Update error: ${err || 'Failed to update.'}`,
+      updateConfirmInstall: 'The application will close and restart to install the update. Do you want to continue?',
     }
   };
   let currentLang = 'pt-BR';
@@ -415,6 +441,11 @@
     if ($('descOnlyInGame')) $('descOnlyInGame').textContent = dict.descOnlyInGame;
     if ($('btnResetSettings')) $('btnResetSettings').textContent = dict.resetDefaults;
     if ($('savedEmpty')) $('savedEmpty').textContent = dict.emptySaved;
+    if ($('lblCheckUpdates')) $('lblCheckUpdates').textContent = dict.lblCheckUpdates;
+    if ($('descCheckUpdates')) $('descCheckUpdates').textContent = dict.descCheckUpdates;
+    if ($('btnCheckUpdates')) $('btnCheckUpdates').textContent = dict.btnCheckUpdates;
+    if ($('btnInstallUpdate')) $('btnInstallUpdate').textContent = dict.btnInstallUpdate;
+    if (typeof renderUpdateState === 'function' && updateState) renderUpdateState(updateState);
 
     if (state) applyToDom(state);
     renderKeybinds();
@@ -1174,9 +1205,18 @@
 
   async function applyImportPayload(parsed) {
     if (!parsed || typeof parsed !== 'object') throw new Error('Documento inválido.');
-    if (parsed.format && parsed.format !== 'CQ1') throw new Error('Versão de documento não suportada.');
-    const api = await loadLayersApi();
-    const validated = api && typeof api.validateCrosshair === 'function' ? api.validateCrosshair(parsed) : parsed;
+    if (Object.hasOwn(parsed, 'format') && parsed.format !== 'CQ1') throw new Error('Versão de documento não suportada.');
+    let api;
+    try {
+      api = await loadLayersApi();
+    } catch {
+      throw new Error('Validador da mira indisponível.');
+    }
+    if (!api || typeof api.validateCrosshair !== 'function') {
+      throw new Error('Validador da mira indisponível.');
+    }
+    const validated = api.validateCrosshair(parsed);
+    if (!validated) throw new Error('Documento inválido.');
     const name = typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim().slice(0, 200) : 'Mira importada';
     const creator = typeof parsed.creator === 'string' && parsed.creator.trim() ? parsed.creator.trim().slice(0, 120) : 'Importada';
     const entry = {
@@ -1241,7 +1281,7 @@
     } else {
       throw new Error('Formato não reconhecido. Use CQ2:... ou JSON.');
     }
-    if (parsed && typeof parsed === 'object' && parsed.format && parsed.format !== 'CQ1' && parsed.format !== 'CQ2') {
+    if (parsed && typeof parsed === 'object' && Object.hasOwn(parsed, 'format') && parsed.format !== 'CQ1') {
       throw new Error('Versão de documento não suportada.');
     }
     return parsed;
@@ -1276,9 +1316,12 @@
   });
   if ($('btnExportShareFile')) $('btnExportShareFile').addEventListener('click', async () => {
     try {
-      const code = $('shareCodeText')?.value || '';
-      let payload;
-      try { payload = await parseShareCode(code); } catch { payload = crosshairPayload(); }
+      const code = ($('shareCodeText')?.value || '').trim();
+      if (!code) {
+        toast('Código da mira vazio.');
+        return;
+      }
+      const payload = await parseShareCode(code);
       const json = JSON.stringify(payload, null, 2);
       if (utf8ByteLength(json) > MAX_SHARE_CODE_LEN) {
         toast('Documento excede o tamanho máximo de 2 MiB.');
@@ -1292,34 +1335,61 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       toast(I18N[currentLang]?.fileExported || 'Arquivo exportado.');
       playSfx('click');
-    } catch { toast('Não foi possível exportar a mira.'); }
+    } catch (err) {
+      toast(`Não foi possível exportar a mira: ${err?.message || 'código inválido'}.`);
+    }
   });
+
+  let importPending = false;
 
   if ($('btnImport')) $('btnImport').addEventListener('click', openImportModal);
   if ($('importModalClose')) $('importModalClose').addEventListener('click', closeImportModal);
   if ($('importModal')) $('importModal').addEventListener('click', (e) => { if (e.target === $('importModal')) closeImportModal(); });
   if ($('btnApplyImportCode')) $('btnApplyImportCode').addEventListener('click', async () => {
+    if (importPending) return;
+    const btnApply = $('btnApplyImportCode');
+    const btnFile = $('btnImportFileSelect');
     const raw = ($('importCodeText')?.value || '').trim();
     if (!raw) {
       if ($('importStatus')) $('importStatus').textContent = 'Cole o código ou escolha um arquivo.';
       return;
     }
+    importPending = true;
+    if (btnApply) btnApply.disabled = true;
+    if (btnFile) btnFile.disabled = true;
     try {
       const parsed = await parseShareCode(raw);
       const ok = await applyImportPayload(parsed);
       if (ok) closeImportModal();
     } catch (err) {
       if ($('importStatus')) $('importStatus').textContent = `Erro: ${err?.message || 'Código inválido'}`;
+    } finally {
+      importPending = false;
+      if (btnApply) btnApply.disabled = false;
+      if (btnFile) btnFile.disabled = false;
     }
   });
   if ($('btnImportFileSelect')) $('btnImportFileSelect').addEventListener('click', () => {
+    if (importPending) return;
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'application/json,.json';
     input.style.display = 'none';
     input.addEventListener('change', async () => {
       const file = input.files && input.files[0];
-      if (!file) return;
+      if (!file) {
+        input.remove();
+        return;
+      }
+      if (importPending) {
+        input.remove();
+        return;
+      }
+      const btnApply = $('btnApplyImportCode');
+      const btnFile = $('btnImportFileSelect');
+      importPending = true;
+      if (btnApply) btnApply.disabled = true;
+      if (btnFile) btnFile.disabled = true;
       try {
         if (file.size > MAX_SHARE_CODE_LEN) throw new Error('Arquivo excede o tamanho máximo de 2 MiB.');
         const raw = await file.text();
@@ -1330,6 +1400,9 @@
       } catch (error) {
         if ($('importStatus')) $('importStatus').textContent = `Arquivo inválido: ${error?.message || 'JSON malformado'}.`;
       } finally {
+        importPending = false;
+        if (btnApply) btnApply.disabled = false;
+        if (btnFile) btnFile.disabled = false;
         input.remove();
       }
     });
@@ -2068,6 +2141,195 @@
     window.addEventListener('focus', () => { syncStartupStatus(); });
   }
 
+  // ---------- Auto Updater ----------
+  let currentAppVersion = null;
+  let updateState = null;
+  let isCheckingUpdate = false;
+  let isInstallingUpdate = false;
+
+  function renderUpdateState(st) {
+    if (!st || typeof st !== 'object') return;
+    updateState = st;
+
+    if (st.currentVersion) {
+      currentAppVersion = st.currentVersion;
+      const sv = $('statVersion');
+      if (sv) sv.textContent = currentAppVersion;
+    }
+
+    const btnCheck = $('btnCheckUpdates');
+    const btnInstall = $('btnInstallUpdate');
+    const statusEl = $('updateStatus');
+    const dict = I18N[currentLang] || I18N['pt-BR'];
+
+    const isDownloaded = st.phase === 'downloaded';
+    const isInstalling = st.phase === 'installing' || isInstallingUpdate;
+    const isChecking = st.phase === 'checking' || isCheckingUpdate;
+    const isDownloading = st.phase === 'downloading';
+    const isUnsupported = st.supported === false || st.phase === 'unsupported';
+
+    if (btnCheck) {
+      btnCheck.disabled = isUnsupported || isChecking || isDownloading || isInstalling;
+    }
+
+    if (btnInstall) {
+      if (isDownloaded) {
+        btnInstall.hidden = false;
+        btnInstall.style.display = '';
+        btnInstall.disabled = isInstalling;
+      } else {
+        btnInstall.hidden = true;
+        btnInstall.style.display = 'none';
+        btnInstall.disabled = false;
+      }
+    }
+
+    if (statusEl) {
+      if (st.error) {
+        const errMsg = typeof dict.updateStatusError === 'function'
+          ? dict.updateStatusError(st.error)
+          : String(st.error);
+        if (isDownloaded) {
+          const dlMsg = typeof dict.updateStatusDownloaded === 'function'
+            ? dict.updateStatusDownloaded(st.version)
+            : dict.updateStatusDownloaded;
+          statusEl.textContent = `${dlMsg} (${errMsg})`;
+        } else {
+          statusEl.textContent = errMsg;
+        }
+      } else {
+        switch (st.phase) {
+          case 'unsupported':
+            statusEl.textContent = dict.updateStatusUnsupported;
+            break;
+          case 'checking':
+            statusEl.textContent = dict.updateStatusChecking;
+            break;
+          case 'available':
+            statusEl.textContent = typeof dict.updateStatusAvailable === 'function'
+              ? dict.updateStatusAvailable(st.version)
+              : dict.updateStatusAvailable;
+            break;
+          case 'downloading':
+            statusEl.textContent = typeof dict.updateStatusDownloading === 'function'
+              ? dict.updateStatusDownloading(st.progress)
+              : dict.updateStatusDownloading;
+            break;
+          case 'downloaded':
+            statusEl.textContent = typeof dict.updateStatusDownloaded === 'function'
+              ? dict.updateStatusDownloaded(st.version)
+              : dict.updateStatusDownloaded;
+            break;
+          case 'not-available':
+            statusEl.textContent = dict.updateStatusNotAvailable;
+            break;
+          case 'installing':
+            statusEl.textContent = dict.updateStatusInstalling;
+            break;
+          case 'idle':
+          default:
+            statusEl.textContent = '';
+            break;
+        }
+      }
+    }
+  }
+
+  const btnCheckUpdates = $('btnCheckUpdates');
+  if (btnCheckUpdates) {
+    btnCheckUpdates.addEventListener('click', async () => {
+      if (isCheckingUpdate || isInstallingUpdate) return;
+      if (!window.cq || typeof window.cq.checkForUpdates !== 'function') return;
+      if (updateState && (updateState.supported === false || updateState.phase === 'unsupported')) return;
+
+      isCheckingUpdate = true;
+      if (btnCheckUpdates) btnCheckUpdates.disabled = true;
+      const dict = I18N[currentLang] || I18N['pt-BR'];
+      const statusEl = $('updateStatus');
+      if (statusEl) statusEl.textContent = dict.updateStatusChecking;
+
+      try {
+        const nextState = await window.cq.checkForUpdates();
+        if (nextState) renderUpdateState(nextState);
+      } catch (err) {
+        renderUpdateState({ ...updateState,
+          phase: updateState?.phase === 'downloaded' ? 'downloaded' : 'error',
+          error: err?.message || 'Falha ao verificar atualizações.' });
+      } finally {
+        isCheckingUpdate = false;
+        if (updateState) {
+          renderUpdateState(updateState);
+        } else if (btnCheckUpdates) {
+          btnCheckUpdates.disabled = false;
+        }
+      }
+    });
+  }
+
+  const btnInstallUpdate = $('btnInstallUpdate');
+  if (btnInstallUpdate) {
+    btnInstallUpdate.addEventListener('click', async () => {
+      if (isInstallingUpdate) return;
+      if (!window.cq || typeof window.cq.installUpdate !== 'function') return;
+      if (updateState?.phase !== 'downloaded') return;
+
+      const dict = I18N[currentLang] || I18N['pt-BR'];
+      const confirmed = typeof window.confirm === 'function'
+        ? window.confirm(dict.updateConfirmInstall)
+        : false;
+      if (!confirmed) return;
+
+      isInstallingUpdate = true;
+      if (btnInstallUpdate) btnInstallUpdate.disabled = true;
+      if (btnCheckUpdates) btnCheckUpdates.disabled = true;
+      const statusEl = $('updateStatus');
+      if (statusEl) statusEl.textContent = dict.updateStatusInstalling;
+
+      try {
+        const nextState = await window.cq.installUpdate();
+        if (nextState) renderUpdateState(nextState);
+      } catch (err) {
+        renderUpdateState({ ...updateState, phase: 'downloaded',
+          error: err?.message || 'Falha ao instalar atualização.' });
+      } finally {
+        isInstallingUpdate = false;
+        if (updateState) {
+          renderUpdateState(updateState);
+        }
+      }
+    });
+  }
+
+  async function initAutoUpdater() {
+    if (!window.cq || typeof window.cq.getUpdateState !== 'function') {
+      if (btnCheckUpdates) btnCheckUpdates.disabled = true;
+      if (btnInstallUpdate) {
+        btnInstallUpdate.hidden = true;
+        btnInstallUpdate.style.display = 'none';
+      }
+      return;
+    }
+    try {
+      if (typeof window.cq.onUpdateState === 'function') {
+        window.cq.onUpdateState((newState) => {
+          if (newState) renderUpdateState(newState);
+        });
+      }
+      const initial = await window.cq.getUpdateState();
+      if (initial) renderUpdateState(initial);
+    } catch (err) {
+      if (btnCheckUpdates) btnCheckUpdates.disabled = true;
+      const statusEl = $('updateStatus');
+      if (statusEl) {
+        const dict = I18N[currentLang] || I18N['pt-BR'];
+        statusEl.textContent = typeof dict.updateStatusError === 'function'
+          ? dict.updateStatusError(err?.message || 'Falha ao obter estado de atualização.')
+          : `Erro: ${err?.message || 'Falha'}`;
+      }
+    }
+  }
+  initAutoUpdater();
+
   // ---------- Streamer ----------
   let streamerRunning = null;
   let streamerPending = false;
@@ -2292,7 +2554,7 @@
       const m = currentModel();
       hms.textContent = `cor ${m.color || '–'} · braços ${m.armLen ?? '–'} · ponto ${m.dot?.enabled ? (m.dot.size ?? '–') : 'off'}`;
     }
-    const sv = $('statVersion'); if (sv) sv.textContent = '0.1.0';
+    const sv = $('statVersion'); if (sv) sv.textContent = currentAppVersion || '–';
     const cn = $('continueName'); if (cn) cn.textContent = profileLabel(current, 'Mira atual');
     const cs = $('continueSub'); if (cs) cs.textContent = current ? 'Perfil atual' : 'Comunidade local';
     paint($('modelPreview'), state, 8);

@@ -17,6 +17,14 @@ contextBridge.exposeInMainWorld('cq', {
   getStartupStatus: () => ipcRenderer.invoke('cq:get-startup-status'),
   setStartup: (enabled) => ipcRenderer.invoke('cq:set-startup', enabled),
   browseGameExecutable: () => ipcRenderer.invoke('cq:browse-game-executable'),
+  getUpdateState: () => ipcRenderer.invoke('cq:update-state'),
+  checkForUpdates: () => ipcRenderer.invoke('cq:update-check'),
+  installUpdate: () => ipcRenderer.invoke('cq:update-install'),
+  onUpdateState: (fn) => {
+    const listener = (_event, state) => fn(state);
+    ipcRenderer.on('cq:update-state', listener);
+    return () => ipcRenderer.removeListener('cq:update-state', listener);
+  },
   windowControl: (action) => ipcRenderer.send('cq:window-control', action),
   onState: (fn) => ipcRenderer.on('cq:state', (_e, state) => fn(state)),
 });

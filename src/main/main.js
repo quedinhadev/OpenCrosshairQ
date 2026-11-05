@@ -13,6 +13,7 @@ const { createInputMonitor } = require('./input');
 const GameState = require('../shared/game-state');
 const G = require('../shared/geometry.js');
 const Streamer = require('./streamer.js');
+const { createUpdater } = require('./updater');
 
 let overlay = null;
 let ui = null;
@@ -350,6 +351,33 @@ app.whenReady().then(() => {
     try { store.flush(); } catch (error) { console.error('[settings]', error.message); }
     quitting = true;
   });
+
+  const updateReason = process.platform !== 'win32' ? 'platform'
+    : !app.isPackaged ? 'development'
+    : process.env.PORTABLE_EXECUTABLE_FILE ? 'portable'
+    : !fs.existsSync(path.join(process.resourcesPath, 'app-update.yml')) ? 'configuration' : null;
+  const updater = createUpdater({
+    currentVersion: app.getVersion(), supported: updateReason === null, reason: updateReason,
+    autoUpdater: updateReason === null ? require('electron-updater').autoUpdater : null,
+    onState: state => { if (ui && !ui.isDestroyed()) ui.webContents.send('cq:update-state', state); },
+    cancelInstall: () => { quitting = false; },
+    prepareInstall: () => {
+      clearTimeout(pendingProfile);
+      persistCurrentProfile();
+      store.flush();
+      // quitAndInstall closes windows before before-quit; bypass tray interception.
+      quitting = true;
+    },
+  });
+  function assertUpdateSender(event) {
+    if (!ui || ui.isDestroyed() || event.sender !== ui.webContents
+      || event.senderFrame !== ui.webContents.mainFrame) throw new Error('Unauthorized update request');
+  }
+  ipcMain.handle('cq:update-state', event => { assertUpdateSender(event); return updater.getState(); });
+  ipcMain.handle('cq:update-check', event => { assertUpdateSender(event); return updater.check(); });
+  ipcMain.handle('cq:update-install', event => { assertUpdateSender(event); return updater.install(); });
+  app.once('before-quit', () => updater.dispose());
+  updater.start();
 
   ipcMain.handle('cq:get-state', () => snapshot());
   ipcMain.handle('cq:get-native-status', () => foregroundMonitor.getStatus());

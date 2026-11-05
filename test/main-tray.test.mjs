@@ -4,15 +4,16 @@
 // Windows, sem janela visível.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
+import test from 'node:test';
 
 const require = createRequire(import.meta.url);
 const { loadProfiles } = require('../src/main/profiles.js');
 const source = fs.readFileSync(new URL('../src/main/main.js', import.meta.url), 'utf8');
 const localRequire = createRequire(new URL('../src/main/main.js', import.meta.url));
+const tempRoot = path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode');
 const monitor = () => ({ getStatus: () => ({ available: false, foreground: null, error: null }), start() {}, stop() {} });
 
 // Bandeja falsa: handlers/listeners capturados; setContextMenu lança após
@@ -33,13 +34,17 @@ async function boot(dir, trayApi, opts = {}) {
   const handlers = new Map();
   const events = new Map();
   const appEvents = new Map();
+  const addAppListener = (name, fn) => {
+    const previous = appEvents.get(name);
+    appEvents.set(name, previous ? (...args) => { previous(...args); fn(...args); } : fn);
+  };
   const windows = [];
   const sent = [];
   let quitCalls = 0;
   class Window {
     constructor() {
       this.listeners = new Map();
-      this.webContents = { send: (channel, payload) => sent.push({ channel, payload }), setZoomFactor() {} };
+      this.webContents = { mainFrame: {}, send: (channel, payload) => sent.push({ channel, payload }), setZoomFactor() {} };
       this.hidden = false; this.minimized = false; this.shown = false; this.destroyed = false;
       this.focused = false;
       windows.push(this);
@@ -72,11 +77,12 @@ async function boot(dir, trayApi, opts = {}) {
   let displays = opts.displays ?? [{ id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 }];
   const screenListeners = new Map();
   const app = {
-    isPackaged: true,
+    isPackaged: false,
+    getVersion: () => '0.1.0',
     whenReady: () => Promise.resolve(),
     getPath: () => dir,
-    once: (name, fn) => appEvents.set(name, fn),
-    on: (name, fn) => appEvents.set(name, fn),
+    once: addAppListener,
+    on: addAppListener,
     quit: () => { quitCalls++; },
   };
   const electron = {
@@ -96,7 +102,7 @@ async function boot(dir, trayApi, opts = {}) {
       if (name === './foreground' || name === './input') return { createForegroundMonitor: monitor, createInputMonitor: monitor };
       return localRequire(name);
     },
-    __dirname: path.resolve('src/main'), console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+    __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
   });
   await new Promise((resolve) => setImmediate(resolve));
   const ui = windows[0];
@@ -110,7 +116,7 @@ async function boot(dir, trayApi, opts = {}) {
 // restauram, menu alterna e sai, before-quit persiste perfil com bandeja
 // destruída (refresh pós-destroy não pode quebrar a persistência).
 {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-main-tray-'));
+  const dir = fs.mkdtempSync(path.join(tempRoot, 'cq-main-tray-'));
   try {
     const trayApi = makeTrayApi();
     const m = await boot(dir, trayApi);
@@ -174,7 +180,7 @@ async function boot(dir, trayApi, opts = {}) {
 // UI sem recuperação nem deixar overlay órfão.
 {
   class BrokenTray { constructor() { throw new Error('sem shell'); } }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-main-tray-'));
+  const dir = fs.mkdtempSync(path.join(tempRoot, 'cq-main-tray-'));
   try {
     const m = await boot(dir, { Tray: BrokenTray, Menu: { buildFromTemplate: () => ({}) } });
     const status = m.get().trayStatus;
@@ -196,7 +202,7 @@ async function boot(dir, trayApi, opts = {}) {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 
   // Bandeja ausente (APIs nulas): IPC close com overlay vivo também chama app.quit
-  const dirNoTray = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-main-notray-'));
+  const dirNoTray = fs.mkdtempSync(path.join(tempRoot, 'cq-main-notray-'));
   try {
     const m = await boot(dirNoTray, { Tray: null, Menu: null });
     assert.equal(m.get().trayStatus.available, false, 'bandeja indisponível');
@@ -213,7 +219,7 @@ async function boot(dir, trayApi, opts = {}) {
 // (refresh roda ANTES do broadcast; ordem inversa publicaria disponível:true
 // obsoleto e nunca mais re-publicaria). Minimizar segue normal.
 {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-main-tray-'));
+  const dir = fs.mkdtempSync(path.join(tempRoot, 'cq-main-tray-'));
   try {
     class FlakyTray {
       constructor(icon) { this.icon = icon; this.handlers = new Map(); this.menus = []; this.n = 0; this.destroyed = false; }
@@ -254,7 +260,7 @@ async function boot(dir, trayApi, opts = {}) {
 // durante quit real (before-quit) close destrói de verdade sem mascarar quit com preventDefault;
 // window-all-closed encerra após todas as janelas destruídas (não fecha overlay antes da UI).
 {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-main-tray-'));
+  const dir = fs.mkdtempSync(path.join(tempRoot, 'cq-main-tray-'));
   try {
     const trayApi = makeTrayApi();
     const m = await boot(dir, trayApi);
@@ -302,7 +308,7 @@ async function boot(dir, trayApi, opts = {}) {
     assert.equal(m.quitCalls(), 1, 'window-all-closed encerra o app após todas destruídas');
 
     // Durante quit real, IPC close também destrói
-    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-main-tray-'));
+    const dir2 = fs.mkdtempSync(path.join(tempRoot, 'cq-main-tray-'));
     try {
       const m2 = await boot(dir2, makeTrayApi());
       m2.appEvents.get('before-quit')();
@@ -321,7 +327,7 @@ async function boot(dir, trayApi, opts = {}) {
     { id: 2, bounds: { x: 1920, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 },
     { id: 3, bounds: { x: 3840, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 },
   ];
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-main-tray-'));
+  const dir = fs.mkdtempSync(path.join(tempRoot, 'cq-main-tray-'));
   try {
     const m = await boot(dir, makeTrayApi(), { displays });
     m.send('cq:set', { displayId: 2 });
@@ -343,5 +349,50 @@ async function boot(dir, trayApi, opts = {}) {
     assert.ok(boundsCalls >= 1, 'reposition chamado após reset');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
+
+await test('canais cq:update-* restringem origem à UI e ao mainFrame', async (t) => {
+  const dir = fs.mkdtempSync(path.join(tempRoot, 'cq-main-update-sender-'));
+  try {
+    const m = await boot(dir, makeTrayApi());
+    const getUpdate = m.handlers.get('cq:update-state');
+    const checkUpdate = m.handlers.get('cq:update-check');
+    const installUpdate = m.handlers.get('cq:update-install');
+    assert.equal(typeof getUpdate, 'function', 'handler cq:update-state registrado');
+    assert.equal(typeof checkUpdate, 'function', 'handler cq:update-check registrado');
+    assert.equal(typeof installUpdate, 'function', 'handler cq:update-install registrado');
+    const sender = m.ui.webContents;
+    const senderFrame = sender.mainFrame;
+    const overlay = m.windows[1].webContents;
+
+    await t.test('aceita ui.webContents com mainFrame real em cq:update-state', () => {
+      const state = getUpdate({ sender, senderFrame });
+      assert.equal(state.currentVersion, '0.1.0');
+      assert.equal(state.supported, false, 'modo development não habilita download');
+      assert.equal(state.phase, 'unsupported');
+      assert.equal(state.reason, 'development');
+    });
+
+    for (const channelName of ['cq:update-state', 'cq:update-check', 'cq:update-install']) {
+      const handler = m.handlers.get(channelName);
+      for (const [name, event] of [
+        ['rejeita overlay com seu próprio mainFrame', { sender: overlay, senderFrame: overlay.mainFrame }],
+        ['rejeita overlay mesmo com mainFrame da UI', { sender: overlay, senderFrame }],
+        ['rejeita iframe da UI', { sender, senderFrame: { parent: senderFrame } }],
+        ['rejeita frame ausente', { sender }],
+        ['rejeita sender ausente', { senderFrame }],
+      ]) {
+        await t.test(`${channelName}: ${name}`, () => {
+          assert.throws(() => handler(event), /Unauthorized update request/);
+        });
+      }
+
+      await t.test(`${channelName}: rejeita UI destruída mesmo com identidade correta`, () => {
+        m.ui.destroyed = true;
+        assert.throws(() => handler({ sender, senderFrame }), /Unauthorized update request/);
+        m.ui.destroyed = false;
+      });
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
 
 console.log('PASS: main↔tray integração (minimizar real, restauração clique/menu, quit, before-quit com perfil modificado, trayStatus, refresh antes do broadcast na falha, fechar para bandeja, display-removed condicional)');

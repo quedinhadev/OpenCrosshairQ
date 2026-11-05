@@ -42,7 +42,7 @@ function element(tag = 'div', document) {
   };
 }
 
-async function designer(saved = []) {
+async function designer(saved = [], compact = false) {
   const document = { activeElement: null };
   const nodes = Object.fromEntries([...read('../src/designer/designer.html').matchAll(/<(\w+)\b[^>]*\bid="([^"]+)"[^>]*>/g)]
     .map(([, tag, id]) => [id, element(tag, document)]));
@@ -51,7 +51,7 @@ async function designer(saved = []) {
   const storage = new Map([[KEY, JSON.stringify(saved)]]), patches = [], alerts = [], readers = [], images = [], copied = [], downloads = [];
   let quota = false;
   const window = {
-    console, document, Blob, navigator: { clipboard: { writeText: async text => { copied.push(text); } } },
+    console, document, Blob, Response, CompressionStream, DecompressionStream, TextEncoder, TextDecoder, Uint8Array, btoa, atob, navigator: { clipboard: { writeText: async text => { copied.push(text); } } },
     URL: { createObjectURL(blob) { downloads.push(blob); return 'blob:test'; }, revokeObjectURL() {} },
     alert: message => alerts.push(message), setTimeout: () => 1, clearTimeout() {},
     addEventListener() {}, removeEventListener() {},
@@ -73,11 +73,12 @@ async function designer(saved = []) {
     createElement: tag => Object.assign(element(tag, document), { click() {}, remove() {} }), body: element('body', document), addEventListener() {} });
   window.window = window; window.self = window;
   const context = vm.createContext(window);
+  if (compact) vm.runInContext(read('../src/shared/share.js'), context);
   for (const file of ['../src/shared/layers.js', '../src/shared/undoredo.js', '../src/designer/designer.js']) {
     vm.runInContext(read(file), context, { filename: file });
   }
   for (let i = 0; i < 6; i++) await Promise.resolve();
-  return { get, storage, patches, alerts, readers, images, copied, downloads, undo: window.CQUndo, layers: window.CQLayers,
+  return { get, storage, patches, alerts, readers, images, copied, downloads, undo: window.CQUndo, layers: window.CQLayers, share: window.CQShare,
     withoutClipboard() { window.navigator.clipboard = null; },
     quota() { quota = true; }, status: () => get('docStatus').textContent,
     import(file) { get('fileInput').files = [file]; get('fileInput').fire('change'); },
@@ -189,6 +190,29 @@ test('oversized JSON blocks clipboard and download before side effects; document
   h.withoutClipboard(); h.get('btnShare').fire('click');
   assert.equal(h.copied.length, 0); assert.equal(h.downloads.length, 0);
   assert.equal(h.preview(), preview); assert.equal(h.undo.undoSize(), undoSize); assert.equal(h.patches.length, writes);
+});
+
+test('CQ2 browser designer clipboard/download preserve explicit empty document and layered Unicode', async () => {
+  const h = await designer([], true);
+  async function until(fn) {
+    const deadline = Date.now() + 5000;
+    while (!fn()) {
+      if (Date.now() > deadline) throw new Error('Designer share timeout');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+  h.get('btnShare').fire('click'); await until(() => h.copied.length === 1);
+  const empty = await h.share.decodeShareCode(h.copied[0]);
+  assert.match(h.copied[0], /^CQ2:/);
+  assert.equal(empty.drawing, '');
+  assert.equal(h.layers.renderCrosshair(h.layers.validateCrosshair(empty)), '');
+  h.get('lnAdd').fire('click'); h.get('docName').value = 'Mira ação ♥';
+  h.get('btnShare').fire('click'); await until(() => h.copied.length === 2);
+  const layered = await h.share.decodeShareCode(h.copied[1]);
+  assert.equal(layered.name, 'Mira ação ♥');
+  assert.equal(h.layers.validateCrosshair(layered).drawing, h.preview());
+  h.withoutClipboard(); h.get('btnShare').fire('click'); await until(() => h.downloads.length === 1);
+  assert.equal(await h.downloads[0].text(), h.copied[1]);
 });
 
 test('UTF-8 JSON bytes over 2 MiB rejected even when character count fits', async () => {
