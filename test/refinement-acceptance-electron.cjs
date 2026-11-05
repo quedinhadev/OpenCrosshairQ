@@ -26,7 +26,16 @@ function snapshot(root = appRoot) {
   for (const item of fs.readdirSync(path.join(root, 'native'), { withFileTypes: true })) {
     if (item.isFile()) files.push('native/' + item.name);
   }
-  return Object.fromEntries(files.sort().map(file => [file, createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')]));
+  const seen = new Set();
+  const entries = [];
+  for (const file of files.sort()) {
+    if (seen.has(file)) continue;
+    seen.add(file);
+    const full = path.join(root, file);
+    if (!fs.existsSync(full)) continue;
+    try { entries.push([file, createHash('sha256').update(fs.readFileSync(full)).digest('hex')]); } catch { continue; }
+  }
+  return Object.fromEntries(entries);
 }
 function sameSnapshot(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function parseSummary(stdout) {
