@@ -1136,18 +1136,19 @@
     return payload;
   }
 
-  function openShareModal(item) {
+  async function openShareModal(item) {
     const modal = $('shareModal');
     if (!modal) return;
     const ta = $('shareCodeText');
+    let code = '';
     try {
-      const code = buildShareCode(item);
-      if (ta) ta.value = code;
+      code = await buildShareCode(item);
     } catch (err) {
       if (ta) ta.value = '';
       toast(err?.message || 'Documento excede o limite de 2 MiB.');
       return;
     }
+    if (ta) ta.value = code;
     modal.classList.add('on');
     playSfx('click');
     if (ta && typeof ta.focus === 'function') ta.focus();
@@ -1198,8 +1199,19 @@
     return true;
   }
 
-  function buildShareCode(item) {
+  function shareApi() {
+    if (typeof window !== 'undefined' && window.CQShare) return window.CQShare;
+    if (typeof globalThis !== 'undefined' && globalThis.CQShare) return globalThis.CQShare;
+    return null;
+  }
+
+  async function buildShareCode(item) {
     const payload = cleanPayload(item);
+    const share = shareApi();
+    if (share && typeof share.encodeShareCode === 'function') {
+      return share.encodeShareCode(payload);
+    }
+    // Legacy fallback (CQShare not loaded): plain base64 JSON.
     const json = JSON.stringify(payload);
     const code = 'CQ1:' + encodeBase64(json);
     if (utf8ByteLength(code) > MAX_SHARE_CODE_LEN) {
@@ -1208,10 +1220,15 @@
     return code;
   }
 
-  function parseShareCode(raw) {
+  async function parseShareCode(raw) {
     const str = String(raw || '').trim();
     if (!str) throw new Error('Código vazio.');
     if (str.length > MAX_SHARE_CODE_LEN) throw new Error('Código excede o tamanho máximo de 2 MiB.');
+    const share = shareApi();
+    if (str.startsWith('CQ2:')) {
+      if (!share || typeof share.decodeShareCode !== 'function') throw new Error('Formato CQ2 indisponível nesta versão.');
+      return share.decodeShareCode(str);
+    }
     let parsed;
     if (str.startsWith('CQ1:')) {
       parsed = JSON.parse(decodeBase64(str.slice(4).trim()));
@@ -1222,9 +1239,9 @@
     } else if (str.startsWith('{')) {
       parsed = JSON.parse(str);
     } else {
-      throw new Error('Formato não reconhecido. Use CQ1:... ou JSON.');
+      throw new Error('Formato não reconhecido. Use CQ2:... ou JSON.');
     }
-    if (parsed && typeof parsed === 'object' && parsed.format && parsed.format !== 'CQ1') {
+    if (parsed && typeof parsed === 'object' && parsed.format && parsed.format !== 'CQ1' && parsed.format !== 'CQ2') {
       throw new Error('Versão de documento não suportada.');
     }
     return parsed;
@@ -1257,11 +1274,11 @@
       }
     }
   });
-  if ($('btnExportShareFile')) $('btnExportShareFile').addEventListener('click', () => {
+  if ($('btnExportShareFile')) $('btnExportShareFile').addEventListener('click', async () => {
     try {
       const code = $('shareCodeText')?.value || '';
       let payload;
-      try { payload = parseShareCode(code); } catch { payload = crosshairPayload(); }
+      try { payload = await parseShareCode(code); } catch { payload = crosshairPayload(); }
       const json = JSON.stringify(payload, null, 2);
       if (utf8ByteLength(json) > MAX_SHARE_CODE_LEN) {
         toast('Documento excede o tamanho máximo de 2 MiB.');
@@ -1288,7 +1305,7 @@
       return;
     }
     try {
-      const parsed = parseShareCode(raw);
+      const parsed = await parseShareCode(raw);
       const ok = await applyImportPayload(parsed);
       if (ok) closeImportModal();
     } catch (err) {

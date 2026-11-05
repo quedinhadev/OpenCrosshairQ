@@ -7,6 +7,7 @@ const test = require('node:test');
 
 const LayersShared = require('../src/shared/layers.js');
 const GeometryShared = require('../src/shared/geometry.js');
+const ShareShared = require('../src/shared/share.js');
 const uiSource = fs.readFileSync('src/ui/ui.js', 'utf8');
 const htmlSource = fs.readFileSync('src/ui/index.html', 'utf8');
 
@@ -83,6 +84,7 @@ function createEnv(customSandbox = {}) {
       cq: mockCq,
       CQLayers: LayersShared,
       CQGeometry: GeometryShared,
+      CQShare: ShareShared,
       addEventListener(type, fn) { windowListeners[type] = fn; },
       location: { hash: '#crosshairs' },
       ...customWindow,
@@ -129,7 +131,9 @@ function createEnv(customSandbox = {}) {
   };
 }
 
-test('UI Rework: CQ1: versioned share code roundtrip and Unicode support', () => {
+const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('UI Rework: CQ2 versioned share code roundtrip and Unicode support', async () => {
   const env = createEnv();
   const sampleCrosshair = {
     id: 'custom-heart',
@@ -146,15 +150,14 @@ test('UI Rework: CQ1: versioned share code roundtrip and Unicode support', () =>
   // Trigger share modal from share button
   env.emitState({ model: sampleCrosshair.model, layers: [], drawing: null });
   env.elements.btnShare.listeners.click();
+  await tick();
 
   assert.ok(env.elements.shareModal.classList.contains('on'), 'shareModal should be open');
   const code = env.elements.shareCodeText.value;
-  assert.ok(code.startsWith('CQ1:'), 'Share code must begin with version prefix CQ1:');
+  assert.ok(code.startsWith('CQ2:'), 'Share code must begin with version prefix CQ2:');
 
-  // Verify base64 decode and parse
-  const b64 = code.slice(4);
-  const json = Buffer.from(b64, 'base64').toString('utf8');
-  const parsed = JSON.parse(json);
+  // Verify deflate+base64url decode and parse
+  const parsed = await ShareShared.decodeShareCode(code);
 
   assert.equal(parsed.format, 'CQ1', 'Format flag must be CQ1');
   assert.equal(parsed.model.color, '#ff2f6b', 'Model properties must roundtrip');
@@ -413,7 +416,7 @@ test('UI Rework: Corrupt localStorage cq.savedCustomCrosshairs="{}" does not thr
   assert.equal(env.elements.savedEmpty.hidden, false, 'Treated safely as empty fallback');
 });
 
-test('UI Rework: CQ1 export of ~1MB raster omits drawing and roundtrips within 2 MiB limit', async () => {
+test('UI Rework: CQ2 export of ~1MB raster omits drawing and roundtrips within 2 MiB limit', async () => {
   const env = createEnv();
   const rasterData = 'data:image/png;base64,' + 'A'.repeat(1024 * 1024);
   const largeLayer = {
@@ -437,13 +440,13 @@ test('UI Rework: CQ1 export of ~1MB raster omits drawing and roundtrips within 2
   });
 
   env.elements.btnShare.listeners.click();
+  await tick();
   assert.ok(env.elements.shareModal.classList.contains('on'), 'Share modal opens');
   const code = env.elements.shareCodeText.value;
-  assert.ok(code.startsWith('CQ1:'), 'Code starts with CQ1:');
+  assert.ok(code.startsWith('CQ2:'), 'Code starts with CQ2:');
   assert.ok(code.length <= 2 * 1024 * 1024, `Code length ${code.length} must be <= 2 MiB`);
 
-  const jsonStr = Buffer.from(code.slice(4), 'base64').toString('utf8');
-  const payload = JSON.parse(jsonStr);
+  const payload = await ShareShared.decodeShareCode(code);
   assert.equal(payload.drawing, undefined, 'Derived drawing must be omitted when layers are present');
   assert.equal(payload.layers.length, 1);
 
@@ -461,6 +464,8 @@ test('UI Rework: Oversize code (>2 MiB) is rejected on export and import with ex
   await env.elements.btnApplyImportCode.listeners.click();
   assert.match(env.elements.importStatus.textContent, /2 MiB/i, 'Import status announces oversize limit');
 
+  // Incompressible random raster: even deflate cannot bring it under the 2 MiB cap.
+  const randomRaster = require('node:crypto').randomBytes(3 * 1024 * 1024).toString('base64');
   const hugeLayer = {
     id: 'raster-huge',
     type: 'draw',
@@ -471,10 +476,11 @@ test('UI Rework: Oversize code (>2 MiB) is rejected on export and import with ex
     w: 64,
     h: 64,
     size: 2,
-    src: 'data:image/png;base64,' + 'A'.repeat(2 * 1024 * 1024),
+    src: 'data:image/png;base64,' + randomRaster,
   };
   env.emitState({ model: {}, layers: [hugeLayer], drawing: null });
   env.elements.btnShare.listeners.click();
+  await tick();
   assert.match(env.elements.toast.textContent, /2 MiB/i, 'Oversize export triggers toast error');
 });
 
@@ -552,11 +558,11 @@ test('UI Rework regression: Explicit empty crosshair (layers: [], drawing: "") r
   env.emitState(emptyDoc);
 
   env.elements.btnShare.listeners.click();
+  await tick();
   const code = env.elements.shareCodeText.value;
-  assert.ok(code.startsWith('CQ1:'));
+  assert.ok(code.startsWith('CQ2:'));
 
-  const jsonStr = Buffer.from(code.slice(4), 'base64').toString('utf8');
-  const payload = JSON.parse(jsonStr);
+  const payload = await ShareShared.decodeShareCode(code);
   assert.equal(payload.layers.length, 0);
   assert.equal(payload.drawing, '');
   assert.equal(payload.model.color, '#123456');
@@ -575,7 +581,7 @@ test('UI Rework regression: Explicit empty crosshair (layers: [], drawing: "") r
   assert.equal(LayersShared.renderCrosshair(lastPatch), '', 'Rendered SVG must remain completely empty');
 });
 
-test('UI Rework regression: Multibyte UTF-8 document (>2 MiB bytes but <2 MiB chars) rejected in both export handlers', () => {
+test('UI Rework regression: Multibyte UTF-8 document (>2 MiB bytes but <2 MiB chars) rejected in both export handlers', async () => {
   let createdDownload = null;
   const env = createEnv({
     document: {
@@ -603,11 +609,12 @@ test('UI Rework regression: Multibyte UTF-8 document (>2 MiB bytes but <2 MiB ch
   assert.match(env.elements.toast.textContent, /2 MiB/i, 'contDownload blocks export on UTF-8 byte size');
   assert.equal(createdDownload, null, 'No download link created for oversize multibyte document');
 
-  // 2. btnExportShareFile check
+  // 2. btnExportShareFile check (async: parse of the CQ2 code happens on a microtask)
   createdDownload = null;
   env.elements.toast.textContent = '';
   env.elements.shareCodeText.value = JSON.stringify(largeDoc);
   env.elements.btnExportShareFile.listeners.click();
+  await tick();
   assert.match(env.elements.toast.textContent, /2 MiB/i, 'btnExportShareFile blocks export on UTF-8 byte size');
   assert.equal(createdDownload, null, 'No download link created for oversize multibyte document in share modal');
 });

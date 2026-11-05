@@ -1190,8 +1190,19 @@
       flashStatus('Salvo no estado do app (favoritos indisponiveis).');
     }
   });
-  $('btnShare').addEventListener('click', () => {
+  $('btnShare').addEventListener('click', async () => {
     const payload = { format: 'CQ1', name: $('docName').value || 'Mira', layers: JSON.parse(JSON.stringify(layers)) };
+    const share = (typeof window !== 'undefined' && window.CQShare) || null;
+    if (share && typeof share.encodeShareCode === 'function') {
+      try {
+        const code = await share.encodeShareCode(payload);
+        const done = () => flashStatus('Código da mira copiado; quem receber cola em Importar.');
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(code).then(done).catch(() => downloadShare(code));
+        } else downloadShare(code);
+      } catch (e) { flashStatus(`Compartilhamento indisponível: ${e.message}`); }
+      return;
+    }
     const url = JSON.stringify(payload, null, 2);
     if (url.length > MAX_SHARE_CODE_LEN || new Blob([url]).size > MAX_SHARE_CODE_LEN) {
       flashStatus('Documento excede 2 MiB; reduza imagens ou camadas antes de compartilhar.'); return;
@@ -1203,16 +1214,17 @@
   });
   function downloadShare(url) {
     try {
-      const blob = new Blob([url], { type: 'application/json' });
+      const isCode = String(url).startsWith('CQ2:');
+      const blob = new Blob([url], { type: isCode ? 'text/plain' : 'application/json' });
       const a = document.createElement('a');
       const objectUrl = URL.createObjectURL(blob);
       a.href = objectUrl;
-      a.download = 'mira-opencrosshairq.json';
+      a.download = isCode ? 'mira-opencrosshairq.txt' : 'mira-opencrosshairq.json';
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-      flashStatus('JSON exportado (download).');
+      flashStatus(isCode ? 'Código exportado (download).' : 'JSON exportado (download).');
     } catch (e) { flashStatus('Nao foi possivel exportar o link.'); }
   }
   $('btnArquivo').addEventListener('click', () => $('arqMenu').classList.toggle('open'));

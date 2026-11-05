@@ -1365,8 +1365,8 @@
         <button class="icon-btn" id="importModalClose" style="width:26px;height:26px" aria-label="Fechar"><svg class="ico"><use href="#i-x"/></svg></button>
       </div>
       <div class="modal-body">
-        <p class="settings-desc" id="importModalDesc" style="margin-bottom:8px">Cole o código da mira (CQ1:...) ou escolha um arquivo .json.</p>
-        <textarea id="importCodeText" placeholder="CQ1:..." style="width:100%;height:90px;background:#181818;border:1px solid rgba(255,255,255,.1);border-radius:4px;color:#eee;font-family:monospace;font-size:11px;padding:8px;resize:none;box-sizing:border-box"></textarea>
+        <p class="settings-desc" id="importModalDesc" style="margin-bottom:8px">Cole o código da mira (CQ2:...) ou escolha um arquivo .json. Códigos antigos CQ1: também funcionam.</p>
+        <textarea id="importCodeText" placeholder="CQ2:..." style="width:100%;height:90px;background:#181818;border:1px solid rgba(255,255,255,.1);border-radius:4px;color:#eee;font-family:monospace;font-size:11px;padding:8px;resize:none;box-sizing:border-box"></textarea>
         <div class="form-row" style="margin-top:12px">
           <button class="btn primary" id="btnApplyImportCode" style="flex:1">Aplicar Código</button>
           <button class="btn" id="btnImportFileSelect" style="flex:1">Arquivo JSON...</button>
@@ -1397,6 +1397,7 @@
 
   <script src="../shared/geometry.js"></script>
   <script src="../shared/layers.js"></script>
+  <script src="../shared/share.js"></script>
   <script src="ui.js"></script>
 </body>
 </html>
