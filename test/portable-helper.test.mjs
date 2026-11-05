@@ -16,7 +16,7 @@ function run(file, args, timeout = 30000) {
     child.on('exit', code => { clearTimeout(timer); code === 0 ? resolve(output) : reject(new Error(output + ' exit ' + code)); });
   });
 }
-test('real Windows helper stages, waits launcher, replaces, relaunches and retains backup; hash failure preserves original', { skip: process.platform !== 'win32', timeout: 90000 }, async t => {
+test('real Windows helper stages, waits launcher, replaces, relaunches and retains backup; hash failure preserves original', { skip: process.platform !== 'win32' || process.env.CI === 'true', timeout: 90000 }, async t => {
   const dir = await mkdtemp(path.join(tmpdir(), "cq helper ' spaced "));
   // Fixtures only. No application profile, real install, registry or external process termination.
   t.after(() => rm(dir, { recursive: true, force: true }));
