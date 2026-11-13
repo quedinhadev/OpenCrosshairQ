@@ -9,7 +9,8 @@ const { loadProfiles, saveProfile, deleteProfileFile, configureProfile } = requi
 const { createTray, willMinimizeToTray } = require('./tray');
 const { createStartup } = require('./startup');
 const { createForegroundMonitor } = require('./foreground');
-const { createInputMonitor } = require('./input');
+const { createInputMonitor, createKeyboardMonitor } = require('./input');
+const { isBindingDown } = require('./keymap');
 const GameState = require('../shared/game-state');
 const G = require('../shared/geometry.js');
 const Streamer = require('./streamer.js');
@@ -21,6 +22,9 @@ let store = null;
 let userDataDir = null;
 let foregroundMonitor = null;
 let inputMonitor = null;
+let keyboardMonitor = null;
+let keyboardStatus = { running: false, error: null };
+const keybindHeld = { aim: false, fire: false, reload: false };
 let profileInFocus = true;
 let gameInFocus = false;
 let nativeStatus = { available: false, foreground: null, error: null };
@@ -79,6 +83,14 @@ function enforceTopmost() {
   enforceTick++;
 }
 
+// Captura do desktop (OBS Display Capture, gravadores de tela) inclui a overlay
+// quando o content protection está desligado. captureVisible=true é o padrão
+// (mira aparece nas gravações); false protege a janela contra captura.
+function applyCaptureProtection() {
+  if (!overlay || overlay.isDestroyed()) return;
+  overlay.setContentProtection(!store.get().captureVisible);
+}
+
 function createOverlay() {
   const display = targetDisplay();
   overlay = new BrowserWindow({
@@ -93,11 +105,13 @@ function createOverlay() {
   });
   overlay.setIgnoreMouseEvents(true, { forward: true });
   overlay.setAlwaysOnTop(true, 'screen-saver');
+  applyCaptureProtection();
   overlay.loadFile(path.join(__dirname, '..', 'overlay', 'overlay.html'));
   overlay.once('ready-to-show', () => {
     reposition();
     overlay.show();
     if (inputMonitor) overlay.webContents.send('cq:input', inputMonitor.getStatus());
+    resetKeybindHeld();
   });
 }
 
@@ -138,16 +152,41 @@ function broadcast() {
 function snapshot() {
   return {
     ...store.get(), profileInFocus, gameInFocus,
-    nativeStatus, shortcutStatus: shortcut?.getStatus() ?? null, validationError,
+    nativeStatus, shortcutStatus: shortcut?.getStatus() ?? null, keyboardStatus, validationError,
     trayStatus: tray ? { available: tray.available, error: tray.error } : null,
   };
 }
-const PROFILE_KEYS = ['visible', 'hidden', 'scale', 'offsetX', 'offsetY', 'limitSize', 'showSecondary', 'model', 'model2', 'layers', 'drawing', 'displayId', 'crosshairSize', 'crosshairOffset', 'defaultCrosshair', 'keybinds', 'firingOptions'];
+const PROFILE_KEYS = ['visible', 'hidden', 'scale', 'offsetX', 'offsetY', 'limitSize', 'showSecondary', 'captureVisible', 'model', 'model2', 'layers', 'drawing', 'displayId', 'crosshairSize', 'crosshairOffset', 'defaultCrosshair', 'keybinds', 'firingOptions'];
+
+// Keyboard shortcuts for aim/fire/reload: the native hook only observes, so the
+// app reacts to real user input without injecting or swallowing anything.
+function sendOverlayAction(payload) {
+  if (overlay && !overlay.isDestroyed()) overlay.webContents.send('cq:action', payload);
+}
+function resetKeybindHeld() {
+  for (const action of Object.keys(keybindHeld)) keybindHeld[action] = false;
+  sendOverlayAction({ action: 'aim', pressed: false });
+}
+function dispatchKeybinds(status) {
+  const keybinds = store.get().keybinds || {};
+  const keys = status?.running ? status.keys : {};
+  for (const action of ['aim', 'fire', 'reload']) {
+    const binding = keybinds[action];
+    const down = !!binding && binding.enabled !== false && isBindingDown(binding, keys);
+    if (down === keybindHeld[action]) continue;
+    keybindHeld[action] = down;
+    // reload is a one-shot action; releases carry no meaning.
+    if (action === 'reload' && !down) continue;
+    sendOverlayAction({ action, pressed: down });
+  }
+}
+
 function setState(patch) {
   if (shortcut && 'keybinds' in patch) {
     const status = shortcut.update(patch.keybinds, () => store.set(patch));
     if (status.error) throw new Error(status.error);
   } else store.set(patch);
+  if ('keybinds' in patch) resetKeybindHeld();
 }
 function persistCurrentProfile() {
   const state = store.get();
@@ -195,6 +234,7 @@ app.whenReady().then(() => {
         offsetY: settings.offsetY ?? 0,
         limitSize: settings.limitSize ?? false,
         showSecondary: settings.showSecondary ?? false,
+        captureVisible: settings.captureVisible ?? false,
         model: settings.model ?? G.defaultModel(),
         model2: settings.model2 ?? G.defaultModel(),
         layers: settings.layers ?? [],
@@ -215,6 +255,7 @@ app.whenReady().then(() => {
       broadcast();
       return false;
     } finally { applyingProfile = false; }
+    applyCaptureProtection();
     reposition();
     return true;
   }
@@ -339,11 +380,21 @@ app.whenReady().then(() => {
     if (overlay && !overlay.isDestroyed()) overlay.webContents.send('cq:input', input);
   });
   inputMonitor.start();
+  keyboardMonitor = createKeyboardMonitor(native, status => {
+    const next = { running: !!status.running, error: status.error || null };
+    if (next.running !== keyboardStatus.running || next.error !== keyboardStatus.error) {
+      keyboardStatus = next;
+      broadcast();
+    }
+    dispatchKeybinds(status);
+  });
+  keyboardMonitor.start();
   app.once('before-quit', () => {
     try { globalShortcut.unregisterAll(); } catch (error) { console.error('[shortcut]', error.message); }
     try { tray?.destroy(); } catch (error) { console.error('[tray]', error.message); }
     try { Streamer.stop(); } catch (error) { console.error('[streamer]', error.message); }
     inputMonitor?.stop();
+    keyboardMonitor?.stop();
     foregroundMonitor?.stop();
     clearInterval(topmostTimer);
     clearTimeout(pendingProfile);
@@ -426,6 +477,7 @@ app.whenReady().then(() => {
       if (store.get() === prev && !needsReposition) broadcast();
       if (PROFILE_KEYS.some(key => key in patch)) queueProfileSave();
       if ('profileDetectionEnabled' in patch || 'onlyInGame' in patch || 'onlyInGameProcessPath' in patch) evaluateNative(foregroundMonitor.getStatus());
+      if ('captureVisible' in patch) applyCaptureProtection();
       if (needsReposition) reposition();
     }
   });
@@ -511,6 +563,7 @@ app.whenReady().then(() => {
           visible: cur.visible, hidden: cur.hidden, scale: cur.scale,
           offsetX: cur.offsetX, offsetY: cur.offsetY,
           limitSize: cur.limitSize, showSecondary: cur.showSecondary,
+          captureVisible: cur.captureVisible ?? false,
           model: cur.model, model2: cur.model2,
           layers: cur.layers, drawing: cur.drawing,
           displayId: cur.displayId ?? null,

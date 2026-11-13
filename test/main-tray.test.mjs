@@ -50,7 +50,7 @@ async function boot(dir, trayApi, opts = {}) {
       this.focused = false;
       windows.push(this);
     }
-    setIgnoreMouseEvents() {} setAlwaysOnTop() {} loadFile() {} once() {} setBounds() {}
+    setIgnoreMouseEvents() {} setAlwaysOnTop() {} setContentProtection() {} loadFile() {} once() {} setBounds() {}
     focus() { this.focused = true; }
     isDestroyed() { return this.destroyed; }
     isMinimized() { return this.minimized; }
@@ -100,7 +100,7 @@ async function boot(dir, trayApi, opts = {}) {
   vm.runInNewContext(source, {
     require(name) {
       if (name === 'electron') return electron;
-      if (name === './foreground' || name === './input') return { createForegroundMonitor: monitor, createInputMonitor: monitor };
+      if (name === './foreground' || name === './input') return { createForegroundMonitor: monitor, createInputMonitor: monitor, createKeyboardMonitor: monitor };
       return localRequire(name);
     },
     __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},

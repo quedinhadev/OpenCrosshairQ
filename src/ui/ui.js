@@ -649,7 +649,6 @@
   const SAVED_CUSTOM = 'cq.savedCustomCrosshairs';
   const POSITIONS = 'cq.savedPositions';
   const POS_PREFS = 'cq.positionPrefs';
-  const CUSTOM_KEYBINDS = 'cq.customKeybinds';
 
   const savedIds = () => loadJson(SAVED_IDS, []).filter(id => typeof id === 'string');
 
@@ -1594,11 +1593,12 @@
 
   // ---------- Keybinds ----------
   const CTRL_KEYS = { leftTrigger: 'LT', rightTrigger: 'RT', faceWest: 'X', faceSouth: 'A', faceNorth: 'Y', faceEast: 'B' };
+  const PC_KEY_LABELS = { LeftClick: 'Botão esquerdo', RightClick: 'Botão direito' };
   function formatPc(keyData) {
     const pc = keyData?.pc;
-    if (!pc?.key) return '';
+    if (!pc?.key) return [];
     const mods = Array.isArray(pc.modifiers) ? pc.modifiers : [];
-    return [...mods, pc.key];
+    return [...mods, PC_KEY_LABELS[pc.key] || pc.key];
   }
   function formatController(keyData) {
     const key = keyData?.controller?.key;
@@ -1659,8 +1659,8 @@
     return wrap;
   }
   function beginCapture(action) {
-    if (action !== 'globalShortcut') return;
-    captureBackup = state?.keybinds?.globalShortcut ? JSON.parse(JSON.stringify(state.keybinds.globalShortcut)) : null;
+    if (!LABELS[action]) return;
+    captureBackup = state?.keybinds?.[action] ? JSON.parse(JSON.stringify(state.keybinds[action])) : null;
     captureAttempt = null;
     capturingAction = action;
     toast(`Pressione a nova combinação para ${LABELS[action] || action}.`);
@@ -1676,13 +1676,14 @@
       const tr = document.createElement('tr');
       const pcParts = formatPc(kb[action] || {});
       const ctlParts = formatController(kb[action] || {});
-      const pcContent = pcParts.length ? kbdHtml(pcParts) : '<span class="kb-pad">Clique para capturar</span>';
+      const pcContent = capturingAction === action
+        ? '<span class="kb-pad">Pressione…</span>'
+        : pcParts.length ? kbdHtml(pcParts) : '<span class="kb-pad">Clique para capturar</span>';
       const pcBtn = document.createElement('button');
       pcBtn.type = 'button';
       pcBtn.style.cssText = 'background:transparent;border:0;padding:0;cursor:pointer;';
       pcBtn.innerHTML = pcContent;
-      pcBtn.disabled = action !== 'globalShortcut';
-      pcBtn.title = action === 'globalShortcut' ? 'Clique e pressione a nova combinação' : 'Somente leitura: entrada fixa; remapeamento indisponível';
+      pcBtn.title = 'Clique e pressione a nova combinação (Escape cancela)';
       pcBtn.addEventListener('click', () => beginCapture(action));
       const ctl = ctlParts.length ? kbdHtml(ctlParts) : `<span class="kb-pad">${dict.kbUnassigned || 'Não atribuído'}</span>`;
       const aimOff = kb.aim?.enabled === false;
@@ -1758,45 +1759,25 @@
       }
     }
 
-    // Custom keybinds stored locally.
-    const customs = loadJson(CUSTOM_KEYBINDS, []);
-    for (const [idx, item] of (Array.isArray(customs) ? customs : []).entries()) {
-      const tr = document.createElement('tr');
-      const pc = Array.isArray(item.pc?.modifiers) ? item.pc.modifiers.concat(item.pc.key) : (item.pc?.key ? [item.pc.key] : []);
-      const delBtn = document.createElement('button');
-      delBtn.className = 'btn danger'; delBtn.textContent = 'Remover'; delBtn.style.marginLeft = '8px';
-      delBtn.addEventListener('click', () => {
-        const list = loadJson(CUSTOM_KEYBINDS, []);
-        const next = Array.isArray(list) ? list.filter((_, i) => i !== idx) : [];
-        saveJson(CUSTOM_KEYBINDS, next);
-        renderKeybinds();
-        toast('Atalho removido.');
-      });
-      tr.innerHTML = `<td><div class="kb-action"><span class="kb-name"><svg class="ico"><use href="#i-keyboard"/></svg>${escapeHtml(item.name || 'Atalho')} (inativo; sem executor)</span></div></td>`;
-      const pcTd = document.createElement('td'); pcTd.className = 'c'; pcTd.innerHTML = pc.length ? kbdHtml(pc) : '<span class="kb-pad">—</span>';
-      const ctlTd = document.createElement('td'); ctlTd.className = 'c'; ctlTd.innerHTML = `<span class="kb-pad">${dict.kbUnassigned || 'Não atribuído'}</span>`;
-      tr.append(pcTd, ctlTd);
-      const actionCell = tr.querySelector('td');
-      if (actionCell?.querySelector('.kb-action')) actionCell.querySelector('.kb-action').appendChild(delBtn);
-      host.appendChild(tr);
-    }
-
-    // Legacy custom entries stay removable; no new non-executable bindings.
+    // Status reflects the real registration/monitoring paths, not intent.
     const status = state.shortcutStatus;
-    const globalStatusText = status?.error ? `Alternar global: ${status.error}` : status?.registered ? `Alternar global ativo: ${status.accelerator}.` : 'Alternar global desligado.';
-    const fireStatusText = kb.fire?.enabled !== false ? 'Atirar: monitor nativo ativo.' : 'Atirar: desativado.';
-    const reloadStatusText = 'Recarregar: execução backend pendente (sem hook global no SO).';
-    if ($('keybindStatus')) $('keybindStatus').textContent = `${globalStatusText} Mirar: entrada fixa do monitor nativo, sem remapeamento. ${fireStatusText} ${reloadStatusText} Atalhos personalizados: sem executor.`;
-  }
-
-  if ($('btnNewKeybind')) {
-    $('btnNewKeybind').disabled = true;
-    $('btnNewKeybind').title = 'Atalhos personalizados indisponíveis: sem executor';
+    const keyboard = state.keyboardStatus;
+    const globalStatusText = status?.error
+      ? `Alternar global: ${status.error}`
+      : status?.registered ? `Alternar global ativo: ${status.accelerator}.` : 'Alternar global desligado.';
+    const keyboardStatusText = keyboard?.error
+      ? `Teclado: ${keyboard.error}`
+      : keyboard?.running ? 'Teclado: monitor passivo ativo.' : 'Teclado: monitor inativo.';
+    const aimPress = kb.aim?.pressType === 'toggle' ? 'alternar' : 'segurar';
+    const aimStatusText = kb.aim?.enabled === false ? 'Mirar: desativado.' : `Mirar: ${aimPress} com ${formatPc(kb.aim).join(' + ') || 'nenhuma tecla'}.`;
+    const fireStatusText = kb.fire?.enabled === false ? 'Atirar: desativado.' : `Atirar: ${formatPc(kb.fire).join(' + ') || 'nenhuma tecla'}.`;
+    const reloadStatusText = kb.reload?.enabled === false ? 'Recarregar: desativado.' : `Recarregar: ${formatPc(kb.reload).join(' + ') || 'nenhuma tecla'} (reinicia animações de tiro/mira).`;
+    if ($('keybindStatus')) $('keybindStatus').textContent = [globalStatusText, keyboardStatusText, aimStatusText, fireStatusText, reloadStatusText].join(' ');
   }
 
   try {
     const kbNote = document.querySelector && document.querySelector('.kb-note');
-    if (kbNote) kbNote.textContent = 'Alternar Global usa a combinação e o estado LIGADO/DESLIGADO deste perfil. Confira abaixo se o sistema aceitou o registro. Mirar/atirar têm entradas fixas do monitor nativo; remapeamento, recarregar, controle global e atalhos personalizados indisponíveis.';
+    if (kbNote) kbNote.textContent = 'Clique na tecla para capturar uma nova combinação; Escape cancela. As teclas são lidas por um hook passivo do Windows: o app nunca bloqueia nem injeta entradas. Recarregar reinicia as animações de tiro/mira.';
   } catch { /* test harness lacks querySelector */ }
 
   // ---------- Settings ----------
@@ -2583,11 +2564,17 @@
   if (window.cq && typeof window.cq.onState === 'function') {
     window.cq.onState((s) => {
       if (s.validationError) toast(s.validationError);
-      if (captureAttempt && s?.shortcutStatus?.error) {
+      // Only the global shortcut has an OS registration to confirm; action
+      // shortcuts are accepted once the main process validates the patch.
+      if (captureAttempt) {
+        const status = s?.shortcutStatus;
         const attempted = shortcutAccelerator({ modifiers: captureAttempt.mods, key: captureAttempt.key });
-        if (s.shortcutStatus.accelerator === attempted || !s.shortcutStatus.accelerator) {
+        if (status?.error && (status.accelerator === attempted || !status.accelerator)) {
           if (captureBackup && s.keybinds) set({ keybinds: { ...s.keybinds, globalShortcut: captureBackup } });
-          toast(`Combinação indisponível (${s.shortcutStatus.error}); combinação anterior restaurada.`);
+          toast(`Combinação indisponível (${status.error}); combinação anterior restaurada.`);
+          captureAttempt = null;
+          captureBackup = null;
+        } else if (!status?.error && status?.registered) {
           captureAttempt = null;
           captureBackup = null;
         }
@@ -2625,8 +2612,12 @@
         }
         e.preventDefault();
         patchKeybind(capturingAction, { modifiers: mods, key });
-        captureAttempt = { mods, key, backup: captureBackup };
-        toast('Combinação enviada; confira o estado do registro global.');
+        // Only the global accelerator needs the registration round-trip; the
+        // action shortcuts are validated by the main process patch itself.
+        captureAttempt = capturingAction === 'globalShortcut' ? { mods, key, backup: captureBackup } : null;
+        toast(capturingAction === 'globalShortcut'
+          ? 'Combinação enviada; confira o estado do registro global.'
+          : `Combinação salva para ${LABELS[capturingAction]}.`);
         capturingAction = null;
         renderKeybinds();
         return;

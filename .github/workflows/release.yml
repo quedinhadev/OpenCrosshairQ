@@ -26,6 +26,9 @@ jobs:
           $expected = 'v' + (Get-Content package.json | ConvertFrom-Json).version
           if ($env:GITHUB_REF_NAME -ne $expected) { throw "Tag must match package.json: $expected" }
       - run: npm ci
+      # electron@45 não roda postinstall; binário precisa ser baixado explicitamente.
+      - name: Install Electron binary
+        run: node node_modules/electron/install.js
       - run: npm test
       - name: Fetch verified Node-API headers
         shell: pwsh

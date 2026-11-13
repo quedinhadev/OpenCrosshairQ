@@ -22,4 +22,14 @@ contextBridge.exposeInMainWorld('cq', {
       ipcRenderer.removeListener('cq:input', listener);
     };
   },
+  onAction: (fn) => {
+    const listener = (_e, action) => fn(action);
+    ipcRenderer.on('cq:action', listener);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      ipcRenderer.removeListener('cq:action', listener);
+    };
+  },
 });

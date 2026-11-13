@@ -38,6 +38,21 @@ function mouseWorker() {
   });
 }
 
+function keyboardSnapshot(running) {
+  const state = addon.getKeyboardSnapshot();
+  assert.equal(state.running, running);
+  assert.equal(state.errorCode, 0);
+  assert.equal(typeof state.keys, 'object');
+  for (const [vk, key] of Object.entries(state.keys)) {
+    integer(Number(vk), 0, 255);
+    assert.equal(typeof key.pressed, 'boolean');
+    integer(key.downCount, 0, Number.MAX_SAFE_INTEGER);
+    integer(key.upCount, 0, Number.MAX_SAFE_INTEGER);
+    if (!running) assert.equal(key.pressed, false);
+  }
+  return state;
+}
+
 app.whenReady().then(async () => {
   try {
     let foreground;
@@ -112,8 +127,16 @@ app.whenReady().then(async () => {
     mouseSnapshot(true);
     addon.stopMouseInput();
     mouseSnapshot(false);
-    console.log(JSON.stringify({ foreground, snapshot, mouse: addon.getMouseSnapshot(), electron: process.versions.electron, napi: process.versions.napi }, null, 2));
-    console.log('PASS: 20 foreground + XInput snapshots; 3 mouse cycles; registration conflict; worker-unload cleanup + restart. Physical input not validated.');
+    keyboardSnapshot(false);
+    assert.equal(addon.startKeyboardInput(), undefined);
+    assert.equal(addon.startKeyboardInput(), undefined);
+    keyboardSnapshot(true);
+    assert.equal(addon.stopKeyboardInput(), undefined);
+    keyboardSnapshot(false);
+    assert.equal(addon.stopKeyboardInput(), undefined);
+    keyboardSnapshot(false);
+    console.log(JSON.stringify({ foreground, snapshot, mouse: addon.getMouseSnapshot(), keyboard: addon.getKeyboardSnapshot(), electron: process.versions.electron, napi: process.versions.napi }, null, 2));
+    console.log('PASS: 20 foreground + XInput snapshots; 3 mouse cycles; keyboard hook lifecycle; registration conflict; worker-unload cleanup + restart. Physical input not validated.');
     app.quit();
   } catch (error) {
     console.error(error);

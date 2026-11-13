@@ -131,7 +131,7 @@ const helpers = uiSource.slice(uiSource.indexOf('  function escapeHtml'), uiSour
 const preview = uiSource.slice(uiSource.indexOf('  function previewColor'), uiSource.indexOf('  function paint'));
 const previewSvg = vm.runInNewContext(`${helpers}\n${preview}\nmodelSvg(model, 7)`, { model: { ...model, color: 'x" onload="bad()', outline: { enabled: true, color: 'url(https://external.test)' } }, CQGeometry: G });
 assert.ok(!previewSvg.includes('onload') && !previewSvg.includes('https://'));
-assert.match(uiSource, /pcBtn.disabled = action !== 'globalShortcut'/);
-assert.match(uiSource, /btnNewKeybind'\)\.disabled = true/);
-assert.match(uiSource, /sem executor/);
+assert.ok(!/pcBtn\.disabled/.test(uiSource), 'action rows must accept key capture');
+assert.ok(!/btnNewKeybind/.test(uiSource), 'non-executable custom keybind UI stays removed');
+assert.match(uiSource, /hook passivo/);
 console.log('PASS: import schema, SVG recompilation, raster limits, preview colors, atomic store, shortcut lifecycle/conflict and unsupported UI controls');

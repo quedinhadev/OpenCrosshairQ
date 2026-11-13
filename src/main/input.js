@@ -56,4 +56,52 @@ function createInputMonitor(native, onChange) {
     },
   };
 }
-module.exports = { createInputMonitor };
+
+// Passive keyboard observation for user-configured shortcuts. The native hook
+// only reports transitions; it never blocks or rewrites input.
+function createKeyboardMonitor(native, onChange) {
+  let timer = null;
+  let started = false;
+  let state = { running: false, error: null, keys: {} };
+  function emit(next) {
+    if (JSON.stringify(next) !== JSON.stringify(state)) { state = next; onChange(structuredClone(state)); }
+  }
+  function poll() {
+    let snapshot = null;
+    let currentError = null;
+    try { snapshot = native.getKeyboardSnapshot(); }
+    catch (failure) { currentError = failure.message; }
+    const next = {
+      running: !!snapshot?.running,
+      error: currentError,
+      keys: snapshot?.keys && typeof snapshot.keys === 'object' ? snapshot.keys : {},
+    };
+    if (snapshot && !snapshot.running && !next.error) next.error = `Keyboard input unavailable (${snapshot.errorCode})`;
+    emit(next);
+  }
+  return {
+    poll,
+    getStatus: () => structuredClone(state),
+    start() {
+      if (started) return;
+      started = true;
+      try { if (native?.startKeyboardInput) native.startKeyboardInput(); }
+      catch (failure) {
+        // Hook failed to install: report it and do not poll a dead monitor.
+        emit({ running: false, error: failure.message, keys: {} });
+        return;
+      }
+      poll();
+      // ponytail: same 8 ms polling as the mouse monitor; switch to event transport if latency requires it.
+      if (native) { timer = setInterval(poll, 8); timer.unref(); }
+    },
+    stop() {
+      if (!started) return;
+      clearInterval(timer); timer = null; started = false;
+      try { native?.stopKeyboardInput?.(); } catch (error) { console.error('[keyboard]', error.message); }
+      emit({ running: false, error: null, keys: {} });
+    },
+  };
+}
+
+module.exports = { createInputMonitor, createKeyboardMonitor };

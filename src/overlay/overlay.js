@@ -83,13 +83,30 @@
   }
   let state = null;
   const timelines = new Map();
-  let aimHidden = false;
+  // Aim sources: the right mouse button (while it is the configured binding) and
+  // the keyboard binding. Effective hiding depends on the activation type.
+  let aimToggled = false;
+  let aimMouseHeld = false;
+  let aimKeyHeld = false;
   let aimKey = null;
   let aimInputReady = false;
   const aimMode = () => state?.keybinds?.aim?.enabled !== false && ['hold', 'toggle'].includes(state?.keybinds?.aim?.pressType)
     ? state.keybinds.aim.pressType : null;
+  const aimMouseBound = () => state?.keybinds?.aim?.pc?.key === 'RightClick';
+  function aimEffective() {
+    const mode = aimMode();
+    if (mode === 'toggle') return aimToggled;
+    if (mode === 'hold') return aimMouseHeld || aimKeyHeld;
+    return false;
+  }
+  function resetAim() {
+    aimToggled = false;
+    aimMouseHeld = false;
+    aimKeyHeld = false;
+    aimInputReady = false;
+  }
   function updateVisibility() {
-    const shown = !!state && window.CQGameState.isCrosshairVisible(state) && !aimHidden;
+    const shown = !!state && window.CQGameState.isCrosshairVisible(state) && !aimEffective();
     primary.style.display = shown && !state.showSecondary ? 'block' : 'none';
     secondary.style.display = shown && state.showSecondary ? 'block' : 'none';
   }
@@ -204,7 +221,7 @@
 
   function handleInput(payload) {
     const invalid = payload?.available !== true || !!payload.error;
-    if (invalid) { aimHidden = false; aimInputReady = false; }
+    if (invalid) resetAim();
     const now = clock();
     for (const side of ['left', 'right']) {
       const previous = input[side];
@@ -212,10 +229,10 @@
       if (!invalid && (!cur || typeof cur.pressed !== 'boolean' || !Number.isSafeInteger(cur.downCount) || cur.downCount < previous.downCount)) continue;
       const down = !invalid && (cur.downCount > previous.downCount || cur.pressed && !previous.pressed);
       const up = !invalid && !cur.pressed && (previous.pressed || down);
-      if (side === 'right' && !invalid) {
+      if (side === 'right' && !invalid && aimMouseBound()) {
         const mode = aimMode();
-        if (mode === 'hold') aimHidden = cur.pressed;
-        else if (aimInputReady && mode === 'toggle' && down && (Math.max(1, cur.downCount - previous.downCount) % 2)) aimHidden = !aimHidden;
+        if (mode === 'hold') aimMouseHeld = cur.pressed;
+        else if (aimInputReady && mode === 'toggle' && down && (Math.max(1, cur.downCount - previous.downCount) % 2)) aimToggled = !aimToggled;
         aimInputReady = true; // Initial/recovery snapshots baseline toggle; hold always uses current pressed.
       }
       if (!invalid) previous.downCount = cur.downCount;
@@ -228,6 +245,34 @@
           if (down && (t.fo.pressType !== 'hold' || cur.pressed)) start(t, now);
           if (up) release(t, now);
         }
+      }
+    }
+    updateVisibility();
+    sync();
+  }
+
+  // Keyboard shortcuts dispatched by the main process from the passive hook.
+  // `fire` mirrors the left-button trigger; `reload` restarts firing animations.
+  function handleAction(payload) {
+    if (!payload || typeof payload.action !== 'string') return;
+    const now = clock();
+    if (payload.action === 'aim') {
+      const mode = aimMode();
+      if (mode === 'toggle') { if (payload.pressed) aimToggled = !aimToggled; }
+      else if (mode === 'hold') aimKeyHeld = !!payload.pressed;
+      else { aimKeyHeld = false; aimToggled = false; }
+    } else if (payload.action === 'reload') {
+      for (const t of timelines.values()) {
+        if (t.fo.trigger !== 'left' && t.fo.trigger !== 'right') continue;
+        clear(t);
+        t.time = 0;
+        t.mode = 'idle';
+      }
+    } else if (payload.action === 'fire' && !reducedMotion) {
+      for (const t of timelines.values()) {
+        if (t.fo.trigger !== 'left') continue;
+        if (payload.pressed) start(t, now);
+        else release(t, now);
       }
     }
     updateVisibility();
@@ -285,7 +330,7 @@
 
   function render(s) {
     const nextAimKey = JSON.stringify([s?.profiles?.currentProfileId, s?.keybinds?.aim]);
-    if (nextAimKey !== aimKey) { aimHidden = false; aimKey = nextAimKey; }
+    if (nextAimKey !== aimKey) { resetAim(); aimKey = nextAimKey; }
     state = s;
     updateVisibility();
     if (!state) {
@@ -324,9 +369,11 @@
     media?.removeEventListener('change', updateReducedMotion);
     if (typeof offState === 'function') offState();
     if (typeof offInput === 'function') offInput();
+    if (typeof offAction === 'function') offAction();
   }
   const offState = window.cq?.onState((value) => { if (!disposed) render(value); });
   const offInput = window.cq?.onInput((value) => { if (!disposed) handleInput(value); });
+  const offAction = window.cq?.onAction?.((value) => { if (!disposed) handleAction(value); });
   window.addEventListener('resize', schedulePosition);
   window.addEventListener('pagehide', dispose, { once: true });
   window.addEventListener('beforeunload', dispose, { once: true });

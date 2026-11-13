@@ -72,7 +72,14 @@ app.whenReady().then(async () => {
         button.click();
         results.push([button.dataset.route, document.querySelector('.page.on')?.id]);
       }
-      return { results, unavailableDisabled: document.getElementById('btnNewKeybind')?.disabled };
+      const rows = [...document.querySelectorAll('#keybindList tr')];
+      const captureButtons = rows.map(row => row.querySelector('button'));
+      return {
+        results,
+        legacyCustomButton: !!document.getElementById('btnNewKeybind'),
+        rowCount: rows.length,
+        captureDisabled: captureButtons.map(button => !button || button.disabled),
+      };
     })()`);
     assert.deepEqual(routes.results, [
       ['crosshairs', 'page-crosshairs'],
@@ -81,7 +88,9 @@ app.whenReady().then(async () => {
       ['positions', 'page-positions'],
       ['startup', 'page-startup'],
     ]);
-    assert.ok(routes.unavailableDisabled, 'unavailable controls must not pretend to work');
+    assert.equal(routes.legacyCustomButton, false, 'non-executable custom keybind UI stays removed');
+    assert.equal(routes.rowCount, 4, 'all four keybind rows render');
+    assert.deepEqual(routes.captureDisabled, [false, false, false, false], 'every keybind row accepts capture');
     const startupDom = await run(`(() => {
       const startOpt = document.getElementById('optionStartWithWindows');
       const startStatus = document.getElementById('startupStatus');

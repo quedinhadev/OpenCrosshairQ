@@ -8,7 +8,7 @@ const source = fs.readFileSync('src/overlay/overlay.js', 'utf8');
 function runtime(options = {}) {
   let now = 0, nextId = 0, writes = 0;
   const frames = new Map(), elements = new Map(), listeners = {};
-  const unsubscribes = { state: 0, input: 0 };
+  const unsubscribes = { state: 0, input: 0, action: 0 };
   function node(id) {
     const n = { style: {}, attributes: {}, children: [], isConnected: true,
       set innerHTML(value) { this.html = value; this.children = []; writes++; },
@@ -32,7 +32,11 @@ function runtime(options = {}) {
     removeEventListener: (name, fn) => { if (listeners[name] === fn) delete listeners[name]; },
     CQGeometry: { defaultModel: () => ({}), buildSpec: (_, scale) => ({ arms: [{ x: 4 * scale, y: -scale, w: 8 * scale, h: 2 * scale, rot: 0 }] }) },
     CQGameState: createRequire(import.meta.url)('../src/shared/game-state.js'),
-    cq: { onState(fn) { this.state = fn; return () => { unsubscribes.state++; this.state = null; }; }, onInput(fn) { this.input = fn; return () => { unsubscribes.input++; this.input = null; }; } },
+    cq: {
+      onState(fn) { this.state = fn; return () => { unsubscribes.state++; this.state = null; }; },
+      onInput(fn) { this.input = fn; return () => { unsubscribes.input++; this.input = null; }; },
+      onAction(fn) { this.action = fn; return () => { unsubscribes.action++; this.action = null; }; },
+    },
   };
   vm.runInNewContext(source, { window, document, requestAnimationFrame, cancelAnimationFrame });
   const state = (layers, extra = {}) => window.cq.state({ visible: true, scale: 1, offsetX: 0, offsetY: 0, layers, ...extra });
@@ -227,7 +231,7 @@ for (const base of [0, .4, 1]) {
   r.input(false, 3); r.mq.matches = false; r.mq.change(); r.tick(0); assert.equal(r.transform(), '', 'reduced input not replayed');
   r.state([r.layer({ trigger: 'autoplay', loop: true })]); r.tick(25);
   const stateCallback = r.window.cq.state, inputCallback = r.window.cq.input;
-  r.listeners.pagehide(); assert.equal(r.transform(), ''); assert.equal(r.frames.size, 0); assert.equal(r.window.cq.input, null); assert.equal(r.mq.change, null);
+  r.listeners.pagehide(); assert.equal(r.transform(), ''); assert.equal(r.frames.size, 0); assert.equal(r.window.cq.input, null); assert.equal(r.window.cq.action, null); assert.equal(r.mq.change, null);
   r.listeners.beforeunload(); r.listeners.pagehide();
   stateCallback({ layers }); inputCallback({ available: true, left: { pressed: true, downCount: 4 } });
   assert.equal(r.frames.size, 0, 'dispose is idempotent and ignores late IPC');
@@ -249,9 +253,9 @@ for (const event of ['pagehide', 'beforeunload']) {
   assert.equal(r.frames.size, 2, 'snap and animation pending before first tick');
   r.listeners[event]();
   assert.equal(r.frames.size, 0, 'pending snap and animation cancelled');
-  assert.equal(r.window.cq.state, null); assert.equal(r.window.cq.input, null);
+  assert.equal(r.window.cq.state, null); assert.equal(r.window.cq.input, null); assert.equal(r.window.cq.action, null);
   r.listeners.pagehide(); r.listeners.beforeunload();
-  assert.deepEqual(r.unsubscribes, { state: 1, input: 1 }, 'subscriptions removed exactly once');
+  assert.deepEqual(r.unsubscribes, { state: 1, input: 1, action: 1 }, 'subscriptions removed exactly once');
 }
 
 // Scale once, both models + drawing. Preserve exact fractional viewport center;
@@ -391,4 +395,51 @@ for (const pressType of ['hold', 'toggle']) {
     assert.equal(r.primary.style.display, 'none', 'new down after recovery still works');
   } finally { monitor.stop(); }
 }
-console.log('PASS: overlay animations/geometry/cleanup; aim hold/toggle, coalesced edges, integrated input baseline/recovery + 100 unchanged polls, profile/config reset, disabled, reduced motion, canonical gates');
+// Keyboard shortcuts arrive as cq:action edges from the passive hook; the
+// overlay must apply hold/toggle aim, mirror fire and restart on reload.
+{
+  for (const pressType of ['hold', 'toggle']) {
+    const r = aiming(pressType);
+    r.window.cq.action({ action: 'aim', pressed: true });
+    assert.equal(r.primary.style.display, 'none', `keyboard aim ${pressType} press hides`);
+    r.window.cq.action({ action: 'aim', pressed: true });
+    assert.equal(r.primary.style.display, pressType === 'hold' ? 'none' : 'block', `repeated press ${pressType}`);
+    r.window.cq.action({ action: 'aim', pressed: false });
+    assert.equal(r.primary.style.display, 'block', `keyboard aim ${pressType} release shows`);
+  }
+  {
+    const r = aiming('toggle');
+    r.render({ keybinds: { aim: { ...aimBinding, pressType: 'press' } } });
+    r.window.cq.action({ action: 'aim', pressed: true });
+    assert.equal(r.primary.style.display, 'block', 'unsupported pressType ignores keyboard aim');
+  }
+  {
+    const r = runtime();
+    const fo = { trigger: 'left', pressType: 'hold', releaseBehavior: 'reset', duration: 100, easing: 'linear' };
+    r.state([r.layer(fo)]);
+    r.window.cq.action({ action: 'fire', pressed: true });
+    r.tick(50); near(r.scale(), 1.2, 'keyboard fire starts left-triggered animation');
+    r.window.cq.action({ action: 'fire', pressed: false });
+    assert.equal(r.transform(), '', 'keyboard fire release applies release policy');
+    r.window.cq.action({ action: 'fire', pressed: true });
+    r.tick(25);
+    r.window.cq.action({ action: 'reload' });
+    assert.equal(r.transform(), '', 'reload resets firing animation');
+    assert.equal(r.frames.size, 0, 'reload stops pending animation frames');
+    r.window.cq.action({ action: 'reload' });
+    assert.equal(r.transform(), '', 'reload is idempotent');
+    for (const payload of [null, undefined, {}, { action: 42 }, { action: 'unknown', pressed: true }]) r.window.cq.action(payload);
+    assert.equal(r.transform(), '', 'malformed action payloads are inert');
+  }
+  {
+    const r = runtime();
+    r.mq.matches = true; r.mq.change();
+    r.state([r.layer({ trigger: 'left', pressType: 'hold', duration: 100, easing: 'linear' })]);
+    const pending = r.frames.size;
+    r.window.cq.action({ action: 'fire', pressed: true });
+    assert.equal(r.frames.size, pending, 'reduced motion keeps keyboard fire inert');
+    r.tick(50);
+    assert.equal(r.transform(), '', 'reduced motion never paints keyboard fire');
+  }
+}
+console.log('PASS: overlay animations/geometry/cleanup; aim hold/toggle, coalesced edges, integrated input baseline/recovery + 100 unchanged polls, profile/config reset, disabled, reduced motion, canonical gates, keyboard cq:action aim/fire/reload');

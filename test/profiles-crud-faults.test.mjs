@@ -54,7 +54,7 @@ function boot(dir) {
   const display = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 };
   class Window {
     constructor() { this.webContents = { mainFrame: {}, send: (channel, state) => sends.push({ channel, state }), setZoomFactor() {} }; }
-    setIgnoreMouseEvents() {} setAlwaysOnTop() {} loadFile() {} once() {} on() {} setBounds() {}
+    setIgnoreMouseEvents() {} setAlwaysOnTop() {} setContentProtection() {} loadFile() {} once() {} on() {} setBounds() {}
     isDestroyed() { return false; }
   }
   const app = { isPackaged: false, getVersion: () => '0.1.0', whenReady: () => Promise.resolve(), getPath: () => dir, once() {}, on() {} };
@@ -69,7 +69,7 @@ function boot(dir) {
     require(name) {
       if (name === 'electron') return electron;
       if (name === './foreground') return { createForegroundMonitor: (_native, onEvaluate) => { evalNative = onEvaluate; return { getStatus: () => fgStatus, start() {}, stop() {} }; } };
-      if (name === './input') return { createInputMonitor: inputMonitor };
+      if (name === './input') return { createInputMonitor: inputMonitor, createKeyboardMonitor: inputMonitor };
       return localRequire(name);
     },
     __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console,

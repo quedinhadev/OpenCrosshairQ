@@ -8,6 +8,7 @@ O **OpenCrosshairQ** usa sobreposição externa ao jogo, com funcionamento offli
 1. **Janela de Overlay Nativa do Windows:**
    - A sobreposição visual utiliza estilos padrão da API Win32 (`WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW`).
    - A janela não recebe foco e não captura cliques ou movimentos do mouse destinados ao jogo (click-through completo).
+   - O parâmetro `captureVisible` (padrão `true`) mantém a janela do overlay capturável, para que a mira apareça em gravações de tela (OBS Display Capture e similares). Com `captureVisible:false`, o app ativa `setContentProtection` do Electron (equivalente a `SetWindowDisplayAffinity` / `WDA_EXCLUDEFROMCAPTURE` no Windows) e a mira fica invisível em capturas. OBS Game Capture não inclui janelas externas independentemente desta configuração. A janela contém apenas a mira, sem dados do usuário.
 2. **Sem Injeção de Código:**
    - O aplicativo **NÃO injeta DLLs**, threads ou shellcode em processos de terceiros.
    - O aplicativo **NÃO utiliza hooks de renderização** (sem interceptação de DirectX, Vulkan ou OpenGL).
@@ -16,6 +17,7 @@ O **OpenCrosshairQ** usa sobreposição externa ao jogo, com funcionamento offli
    - O executável não lê estados internos de partidas, posições de inimigos ou variáveis do jogo.
 4. **Isolamento de Entrada:**
    - O suporte opcional a detecção de cliques usa a API nativa do Windows (Raw Input / XInput em modo escuta do dispositivo local), sem sintetizar teclas ou cliques falsos (sem macros e sem automação).
+   - Os atalhos de teclado (Mirar, Atirar, Recarregar) usam um hook passivo `WH_KEYBOARD_LL` que apenas observa as teclas e repassa todo evento ao sistema via `CallNextHookEx`; nenhuma entrada é sintetizada, bloqueada ou suprimida.
 5. **Offline-First e Sem Telemetria:**
    - Miras e perfis funcionam offline e ficam no diretório `userData` do Electron.
    - A partir do código-fonte v0.2.0, instalações NSIS e Portable consultam GitHub Releases via HTTPS para verificar e baixar atualizações. Desenvolvimento não ativa atualização automática.

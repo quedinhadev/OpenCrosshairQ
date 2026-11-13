@@ -220,8 +220,9 @@ const click = () => button.listeners.click();
   stateListener({ model, scale: 1, keybinds: { globalShortcut: { enabled: true, pc: { modifiers: ['Alt', 'Shift'], key: 'Z' } } } });
   assert.equal(elements.keybindList.children.length, 4, 'all keybind rows render without errors');
   assert.equal(elements.keybindList.children[0].children[0].children[0].children[1].disabled, false);
-  assert.equal(elements.keybindList.children[1].children[0].children[0].children[1].disabled, true);
-  assert.match(elements.keybindStatus.textContent, /sem executor/);
+  assert.equal(elements.keybindList.children[1].children[0].children[0].children[1].disabled, false, 'aim row accepts capture');
+  assert.match(elements.keybindStatus.textContent, /Mirar:/);
+  assert.match(elements.keybindStatus.textContent, /Recarregar:/);
   for (const [id, type, input, key, expected] of [
     ['scale', 'change', '0.05', 'scale', 0.05], ['scaleRange', 'input', '1.236', 'scale', 1.24],
     ['scale', 'change', '0', 'scale', 0.01], ['scale', 'change', '11', 'scale', 10],

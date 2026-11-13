@@ -25,13 +25,17 @@ try {
   assert.deepEqual(reloaded.get().profiles.profiles, profiles);
   const removed = createStore(dir, { profiles: { default: profiles.default } });
   assert.equal(removed.get().profiles.currentProfileId, 'default', 'deleted selection falls back');
-  for (const patch of [null, [], 1, { scale: 'abc' }, { scale: 0 }, { scale: Infinity }, { crosshairSize: -1 }, { offsetX: null }, { offsetY: NaN }, { offsetX: 100001 }, { hidden: 'yes' }, { visible: 0 }, { limitSize: null }, { showSecondary: 'false' }, { onlyInGame: 1 }, { profileDetectionEnabled: [] }, { displayId: '1' }, { crosshairOffset: null }, { crosshairOffset: { x: 'bad', y: 0 } }, { crosshairOffset: { x: 1 } }, { defaultCrosshair: 'bad' }, { defaultCrosshair: { model: { color: 'url(https://x)' } } }, { firingOptions: [] }, { animations: [] }, { profiles: { currentProfileId: 'missing' } }]) {
+  for (const patch of [null, [], 1, { scale: 'abc' }, { scale: 0 }, { scale: Infinity }, { crosshairSize: -1 }, { offsetX: null }, { offsetY: NaN }, { offsetX: 100001 }, { hidden: 'yes' }, { visible: 0 }, { limitSize: null }, { showSecondary: 'false' }, { onlyInGame: 1 }, { captureVisible: 'yes' }, { captureVisible: 1 }, { profileDetectionEnabled: [] }, { displayId: '1' }, { crosshairOffset: null }, { crosshairOffset: { x: 'bad', y: 0 } }, { crosshairOffset: { x: 1 } }, { defaultCrosshair: 'bad' }, { defaultCrosshair: { model: { color: 'url(https://x)' } } }, { firingOptions: [] }, { animations: [] }, { profiles: { currentProfileId: 'missing' } }]) {
     const before = JSON.stringify(store.get());
     const disk = fs.readFileSync(path.join(dir, 'settings.json'), 'utf8');
     assert.throws(() => store.set(patch), undefined, JSON.stringify(patch));
     assert.equal(JSON.stringify(store.get()), before, 'invalid patch preserves memory');
     assert.equal(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'), disk, 'invalid patch preserves disk');
   }
+  assert.equal(store.get().captureVisible, true, 'captureVisible default visível em gravações');
+  store.set({ captureVisible: false });
+  assert.equal(store.get().captureVisible, false, 'captureVisible booleano aceito');
+  store.set({ captureVisible: true });
   assert.throws(() => store.set({ animations: new Map([['mutable', 1]]) }), /objetos JSON/, 'mutable collection cannot bypass freeze');
   const input = { keybinds: structuredClone(DEFAULTS.keybinds), animations: { nested: { value: 1 } }, firingOptions: { duration: 10 }, profiles: { profiles: structuredClone(profiles) } };
   input.keybinds.globalShortcut.pc.key = 'J';

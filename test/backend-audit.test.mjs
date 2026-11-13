@@ -43,6 +43,7 @@ function createBootHelper() {
     }
     setIgnoreMouseEvents() {}
     setAlwaysOnTop() {}
+    setContentProtection(enable) { this.contentProtection = enable; }
     loadFile() {}
     once() {}
     on(event, fn) { this.listeners.set(event, fn); }
@@ -110,6 +111,7 @@ function createBootHelper() {
       if (name === './input') {
         return {
           createInputMonitor: () => ({ getStatus: () => ({}), start: () => {}, stop: () => {} }),
+          createKeyboardMonitor: () => ({ getStatus: () => ({ running: false, error: null, keys: {} }), start: () => {}, stop: () => {} }),
         };
       }
       return localRequire(name);
@@ -392,4 +394,49 @@ function createBootHelper() {
   }
 }
 
-console.log('PASS: backend-audit (BACK2, BACK5, BACK7, BACK9+RUN6, BACK13)');
+// ---------------------------------------------------------------------------
+// 6. CAPTURE1: captureVisible via IPC cq:set (default seguro, toggle e IPC)
+// ---------------------------------------------------------------------------
+{
+  const env = createBootHelper();
+  try {
+    await new Promise((r) => setImmediate(r));
+    const overlay = env.windows[1];
+    assert.equal(env.get().captureVisible, true, 'captureVisible começa true (visível em gravações)');
+    assert.equal(overlay.contentProtection, false, 'proteção desligada por padrão');
+
+    env.send('cq:set', { captureVisible: false });
+    assert.equal(env.get().captureVisible, false, 'cq:set aceita captureVisible=false');
+    assert.equal(overlay.contentProtection, true, 'proteção ativa com captureVisible=false');
+
+    env.send('cq:create-profile', { name: 'Capture Profile' });
+    const captureProfileId = env.get().profiles.currentProfileId;
+    assert.equal(
+      env.get().profiles.profiles[captureProfileId].settings.captureVisible,
+      false,
+      'novo perfil herda captureVisible=false'
+    );
+
+    env.send('cq:set-profile', { id: 'default' });
+    env.send('cq:set', { captureVisible: true });
+    assert.equal(env.get().captureVisible, true, 'default volta para captureVisible=true');
+
+    env.send('cq:set-profile', { id: captureProfileId });
+    assert.equal(env.get().captureVisible, false, 'applyProfile aplica captureVisible=false do perfil');
+    assert.equal(overlay.contentProtection, true, 'proteção segue perfil protegido');
+
+    env.send('cq:set-profile', { id: 'default' });
+    assert.equal(env.get().captureVisible, true, 'applyProfile volta para captureVisible=true');
+    assert.equal(overlay.contentProtection, false, 'proteção removida no default');
+
+    const invalid = { captureVisible: 'yes' };
+    env.send('cq:set', invalid);
+    assert.ok(env.get().validationError, 'IPC valida captureVisible booleano');
+    assert.equal(env.get().captureVisible, true, 'patch inválido não altera estado');
+    assert.equal(overlay.contentProtection, false, 'proteção permanece removida após patch inválido');
+  } finally {
+    env.cleanup();
+  }
+}
+
+console.log('PASS: backend-audit (BACK2, BACK5, BACK7, BACK9+RUN6, BACK13, CAPTURE1)');

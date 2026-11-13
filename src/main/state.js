@@ -4,6 +4,19 @@ const fs = require('fs');
 const path = require('path');
 const Layers = require('../shared/layers');
 
+// Shape validation for the remappable action shortcuts (aim/fire/reload).
+// Values are kept verbatim: key names are resolved by main/keymap.js.
+function keybindBinding(binding, label) {
+  if (!binding || typeof binding !== 'object' || Array.isArray(binding)) throw new TypeError(`atalho ${label} inválido`);
+  if (binding.enabled !== undefined && typeof binding.enabled !== 'boolean') throw new TypeError(`${label}.enabled inválido`);
+  if (binding.pressType !== undefined && !['press', 'hold', 'toggle'].includes(binding.pressType)) throw new TypeError(`${label}.pressType inválido`);
+  if (binding.pc === undefined || binding.pc === null) return;
+  if (typeof binding.pc !== 'object' || Array.isArray(binding.pc)) throw new TypeError(`${label}.pc inválido`);
+  if (typeof binding.pc.key !== 'string' || !binding.pc.key) throw new TypeError(`${label}.pc.key inválido`);
+  if (binding.pc.modifiers !== undefined && (!Array.isArray(binding.pc.modifiers) || binding.pc.modifiers.some((m) => typeof m !== 'string' || !m))) throw new TypeError(`${label}.pc.modifiers inválido`);
+}
+
+
 function validatePatch(patch, current = {}) {
   const ALLOWED_KEYS = [...new Set([...Object.keys(DEFAULTS), 'animations'])];
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new TypeError('patch inválido');
@@ -22,18 +35,10 @@ function validatePatch(patch, current = {}) {
     if (!kb || typeof kb !== 'object' || Array.isArray(kb)) throw new TypeError('atalhos inválidos');
     const binding = kb.globalShortcut ?? DEFAULTS.keybinds.globalShortcut;
     accelerator(binding);
-    if (kb.aim) {
-      if (typeof kb.aim !== 'object' || Array.isArray(kb.aim)) throw new TypeError('atalho aim inválido');
-      if (kb.aim.enabled !== undefined && typeof kb.aim.enabled !== 'boolean') throw new TypeError('aim.enabled inválido');
-      if (kb.aim.pressType !== undefined && !['hold', 'toggle'].includes(kb.aim.pressType)) throw new TypeError('aim.pressType inválido');
-    }
-    if (kb.fire) {
-      if (typeof kb.fire !== 'object' || Array.isArray(kb.fire)) throw new TypeError('atalho fire inválido');
-      if (kb.fire.enabled !== undefined && typeof kb.fire.enabled !== 'boolean') throw new TypeError('fire.enabled inválido');
-    }
-    if (kb.reload) {
-      if (typeof kb.reload !== 'object' || Array.isArray(kb.reload)) throw new TypeError('atalho reload inválido');
-      if (kb.reload.enabled !== undefined && typeof kb.reload.enabled !== 'boolean') throw new TypeError('reload.enabled inválido');
+    for (const action of ['aim', 'fire', 'reload']) {
+      if (!kb[action]) continue;
+      keybindBinding(kb[action], action);
+      if (action === 'aim' && kb.aim.pressType !== undefined && !['hold', 'toggle'].includes(kb.aim.pressType)) throw new TypeError('aim.pressType inválido');
     }
     next.keybinds = { ...kb, globalShortcut: binding };
   }
@@ -45,6 +50,7 @@ function validatePatch(patch, current = {}) {
   if ('minimizeToTray' in next && typeof next.minimizeToTray !== 'boolean') throw new TypeError('minimizeToTray inválido');
   if ('startMinimized' in next && typeof next.startMinimized !== 'boolean') throw new TypeError('startMinimized inválido');
   if ('onlyInGame' in next && typeof next.onlyInGame !== 'boolean') throw new TypeError('onlyInGame inválido');
+  if ('captureVisible' in next && typeof next.captureVisible !== 'boolean') throw new TypeError('captureVisible inválido');
   if ('onlyInGameProcessPath' in next) {
     if (next.onlyInGameProcessPath !== null && typeof next.onlyInGameProcessPath !== 'string') throw new TypeError('onlyInGameProcessPath inválido');
     if (next.onlyInGameProcessPath === null) next.onlyInGameProcessPath = '';
@@ -137,10 +143,11 @@ const DEFAULTS = {
   startMinimized: false,  // iniciar aplicativo minimizado/na bandeja
   showSecondary: false,   // one global secondary (original: isSavedCrosshairVisible)
   defaultCrosshair: null, // perfil: mira default serializada
+  captureVisible: true, // overlay visible in screen recordings (OBS Display Capture). false = content protection on.
   keybinds: {             // perfil: atalhos (globalShortcut/aim/fire/reload)
     crosshairs: [],
     globalShortcut: { id: null, enabled: true, action: 'toggleHide', pressType: 'press', pc: { modifiers: ['Alt', 'Shift'], key: 'Z', platform: 'PC' }, controller: null },
-    aim: { id: null, enabled: false, action: 'aim', pressType: 'hold', pc: { modifiers: [], key: 'RightClick', platform: 'PC' }, controller: { key: 'leftTrigger' } },
+    aim: { id: null, enabled: true, action: 'aim', pressType: 'hold', pc: { modifiers: [], key: 'RightClick', platform: 'PC' }, controller: { key: 'leftTrigger' } },
     fire: { id: null, enabled: true, action: 'fire', pressType: 'hold', pc: { modifiers: [], key: 'LeftClick', platform: 'PC' }, controller: { key: 'rightTrigger' } },
     reload: { id: null, enabled: true, action: 'reload', pressType: 'press', pc: { modifiers: [], key: 'R', platform: 'PC' }, controller: { key: 'faceWest' } },
   },

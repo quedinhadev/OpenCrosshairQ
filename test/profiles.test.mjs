@@ -57,13 +57,15 @@ try {
   const handlers = new Map();
   const events = new Map();
   const sends = [];
+  const stateSends = () => sends.filter((entry) => entry.channel === 'cq:state');
+  const lastState = () => stateSends().at(-1)?.state;
   const active = new Map();
   const shortcutCalls = [];
   let acceptShortcut = true;
   const display = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 };
   class Window {
     constructor() { this.webContents = { mainFrame: {}, send: (channel, state) => sends.push({ channel, state }), setZoomFactor() {} }; }
-    setIgnoreMouseEvents() {} setAlwaysOnTop() {} loadFile() {} once() {} on() {} setBounds() {} isDestroyed() { return false; }
+    setIgnoreMouseEvents() {} setAlwaysOnTop() {} setContentProtection() {} loadFile() {} once() {} on() {} setBounds() {} isDestroyed() { return false; }
   }
   const app = { isPackaged: false, getVersion: () => '0.1.0', whenReady: () => Promise.resolve(), getPath: () => ipcDir, once() {}, on() {} };
   const electron = {
@@ -87,7 +89,7 @@ try {
     require(name) {
       if (name === 'electron') return electron;
       if (name === './foreground') return { createForegroundMonitor: monitor };
-      if (name === './input') return { createInputMonitor: monitor };
+      if (name === './input') return { createInputMonitor: monitor, createKeyboardMonitor: monitor };
       return localRequire(name);
     },
     __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
@@ -125,7 +127,7 @@ try {
   } finally { fs.renameSync = original; }
   assert.equal(get().scale, before, 'IPC write failure leaves memory untouched');
   assert.match(get().validationError, /disk unavailable/);
-  assert.equal(sends.at(-1).state.scale, before, 'IPC broadcasts old state with error');
+  assert.equal(lastState().scale, before, 'IPC broadcasts old state with error');
   const originalBinding = structuredClone(get().keybinds);
   const replacement = structuredClone(originalBinding);
   replacement.globalShortcut.pc = { modifiers: ['Ctrl', 'Shift'], key: 'K' };
@@ -172,7 +174,7 @@ try {
   for (const method of ['writeFileSync', 'renameSync']) {
     const originalMethod = fs[method];
     const disk = fs.readFileSync(path.join(ipcDir, 'settings.json'), 'utf8');
-    const hidden = get().hidden, broadcasts = sends.length;
+    const hidden = get().hidden, broadcasts = stateSends().length;
     try {
       fs[method] = () => { throw new Error(`toggle ${method} unavailable`); };
       assert.doesNotThrow(() => active.get(newCombo)(), 'native callback contains persistence error');
@@ -180,8 +182,8 @@ try {
     assert.equal(get().hidden, hidden);
     assert.equal(fs.readFileSync(path.join(ipcDir, 'settings.json'), 'utf8'), disk);
     assert.ok(get().validationError.includes(method));
-    assert.ok(sends.length > broadcasts, 'native error broadcasts previous state');
-    assert.equal(sends.at(-1).state.hidden, hidden);
+    assert.ok(stateSends().length > broadcasts, 'native error broadcasts previous state');
+    assert.equal(lastState().hidden, hidden);
   }
   const hidden = get().hidden;
   active.get(newCombo)();
@@ -209,7 +211,7 @@ try {
       require(name) {
         if (name === 'electron') return { ...electron, app: { ...app, getPath: () => bootDir }, globalShortcut: { register() { bootAttempts++; return false; }, unregister() { assert.fail('boot has no active binding'); } } };
         if (name === './foreground') return { createForegroundMonitor: monitor };
-        if (name === './input') return { createInputMonitor: monitor };
+        if (name === './input') return { createInputMonitor: monitor, createKeyboardMonitor: monitor };
         return localRequire(name);
       },
       __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
@@ -242,7 +244,7 @@ try {
     require(name) {
       if (name === 'electron') return { ...electron, app: { ...app, getPath: () => switchDir } };
       if (name === './foreground') return { createForegroundMonitor(_native, callback) { pollForeground = callback; return { getStatus: () => foreground, start() {}, stop() {} }; } };
-      if (name === './input') return { createInputMonitor: monitor };
+      if (name === './input') return { createInputMonitor: monitor, createKeyboardMonitor: monitor };
       return localRequire(name);
     },
     __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
@@ -256,13 +258,13 @@ try {
   const previousSelection = selectedState();
   assert.deepEqual(previousSelection, ['default', 2, false, true, 'Z']);
   acceptShortcut = false;
-  const rejectedAt = sends.length;
+  const rejectedAt = stateSends().length;
   assert.doesNotThrow(() => send('cq:set-profile', { id: 'target' }), 'profile conflict contained in handler');
   assert.deepEqual(selectedState(), previousSelection, 'conflict preserves selected profile/config/focus');
   assert.deepEqual([...active.keys()], [originalCombo]);
-  assert.ok(sends.length > rejectedAt);
-  assert.ok(sends.at(-1).state.validationError);
-  assert.ok(sends.at(-1).state.shortcutStatus.error);
+  assert.ok(stateSends().length > rejectedAt);
+  assert.ok(lastState().validationError);
+  assert.ok(lastState().shortcutStatus.error);
   const persistedSelection = () => {
     const state = JSON.parse(fs.readFileSync(path.join(switchDir, 'settings.json')));
     return [state.profiles.currentProfileId, state.scale, state.hidden, state.keybinds.globalShortcut.pc.key];
@@ -274,7 +276,7 @@ try {
     const originalMethod = fs[method];
     let injected = false;
     const offsetBefore = get().offsetX;
-    const broadcastsBefore = sends.length;
+    const broadcastsBefore = stateSends().length;
     const calls = shortcutCalls.length;
     try {
       fs[method] = function (file, ...args) {
@@ -291,24 +293,24 @@ try {
     assert.equal(injected, true, `${stage}/${method} fault reached`);
     assert.deepEqual(selectedState(), previousSelection);
     assert.equal(get().offsetX, offsetBefore);
-    assert.ok(sends.length > broadcastsBefore, 'persistence rejection always published');
-    assert.equal(sends.at(-1).state.profiles.currentProfileId, 'default');
-    assert.equal(sends.at(-1).state.profileInFocus, true);
+    assert.ok(stateSends().length > broadcastsBefore, 'persistence rejection always published');
+    assert.equal(lastState().profiles.currentProfileId, 'default');
+    assert.equal(lastState().profileInFocus, true);
     assert.deepEqual(persistedSelection(), ['default', 2, false, 'Z']);
     assert.deepEqual([...active.keys()], [originalCombo]);
-    assert.ok(sends.at(-1).state.validationError.includes(`${stage} ${method}`));
+    assert.ok(lastState().validationError.includes(`${stage} ${method}`));
     if (stage === 'candidate') {
-      assert.ok(sends.at(-1).state.shortcutStatus.error.includes(method));
+      assert.ok(lastState().shortcutStatus.error.includes(method));
       assert.deepEqual(shortcutCalls.slice(calls), [['register', newCombo], ['unregister', newCombo]]);
     }
   }
-  const successAt = sends.length;
+  const successAt = stateSends().length;
   assert.doesNotThrow(() => send('cq:set-profile', { id: 'target' }));
   assert.deepEqual(selectedState(), ['target', 3, true, false, 'K']);
   assert.equal(get().validationError, null);
   assert.equal(get().shortcutStatus.error, null);
   assert.deepEqual([...active.keys()], [newCombo]);
-  for (const { state } of sends.slice(successAt)) if (state.profiles.currentProfileId === 'target') {
+  for (const { state } of stateSends().slice(successAt)) if (state.profiles.currentProfileId === 'target') {
     assert.equal(state.profileInFocus, false, 'no committed candidate broadcast with stale focus');
     assert.equal(state.validationError, null, 'successful switch clears prior rejection before publication');
   }
@@ -319,16 +321,16 @@ try {
   foreground = { available: true, foreground: { executablePath: 'C:\\Other.exe' } };
   assert.doesNotThrow(() => pollForeground(foreground), 'autoswitch conflict contained');
   assert.deepEqual(selectedState(), ['target', 3, true, false, 'K'], 'autoswitch failure evaluates focus for still-selected target');
-  assert.ok(sends.at(-1).state.validationError);
-  assert.ok(sends.at(-1).state.shortcutStatus.error);
+  assert.ok(lastState().validationError);
+  assert.ok(lastState().shortcutStatus.error);
   assert.deepEqual([...active.keys()], [newCombo]);
   acceptShortcut = true;
-  const autoAt = sends.length;
+  const autoAt = stateSends().length;
   pollForeground(foreground);
   assert.deepEqual(selectedState(), ['auto', 4, false, true, 'Z']);
   assert.equal(get().validationError, null);
   assert.deepEqual([...active.keys()], [originalCombo]);
-  for (const { state } of sends.slice(autoAt)) if (state.profiles.currentProfileId === 'auto') assert.equal(state.profileInFocus, true);
+  for (const { state } of stateSends().slice(autoAt)) if (state.profiles.currentProfileId === 'auto') assert.equal(state.profileInFocus, true);
   console.log('PASS: main profile conflict/persistence containment + committed focus broadcasts + autoswitch recovery (no Electron)');
   console.log('PASS: main IPC + hidden profiles + shortcut conflict/retry/rollback/boot + native write failures (no Electron)');
 } finally { fs.rmSync(ipcDir, { recursive: true, force: true }); }

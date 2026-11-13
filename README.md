@@ -70,8 +70,9 @@ Essa arquitetura não equivale a uma mira física de monitor e não comprova apr
 - **Biblioteca de Miras e Perfis por Jogo:**
   - Salve quantas miras desejar em formato JSON local.
   - Troca automática de mira com base no executável em primeiro plano (detecção opcional via addon nativo C Win32).
-- **Atalhos Globais:**
+- **Atalhos Globais e de Ação:**
   - Oculte ou exiba a mira a qualquer momento via tecla de atalho (`Alt+Shift+Z` padrão, configurável).
+  - Mirar, Atirar e Recarregar são remapeáveis na página **Atalhos** e usam um hook de teclado passivo (`WH_KEYBOARD_LL`) que apenas observa as teclas: todo evento é repassado ao sistema (`CallNextHookEx`), sem sintetizar ou bloquear entrada.
 - **Compartilhamento por código (código-fonte v0.2.0):**
   - Códigos compactos `CQ2:` funcionam offline, sem conta. Copie em **Compartilhar** no Criador ou na biblioteca; cole em **Importar** para salvar nos favoritos e aplicar.
   - Importação mantém suporte a `CQ1:` e arquivos JSON antigos. Limites: código até 2 MiB e documento descomprimido até 20 MiB, além dos limites de camadas e imagens. Retículas com imagens podem gerar códigos grandes.
@@ -81,6 +82,11 @@ Essa arquitetura não equivale a uma mira física de monitor e não comprova apr
   - Modo de desenvolvimento não faz atualização automática. Versão v0.1.0 precisa de atualização manual para receber o atualizador.
 - **Servidor HTTP local:**
   - Expõe status em `127.0.0.1`. Ainda não fornece página de mira para Browser Source nem configura OBS automaticamente.
+- **Visibilidade em Capturas (configurável):**
+  - Por padrão a mira **aparece em gravações e capturas de tela** (`captureVisible:true`): a janela do overlay não usa proteção de conteúdo, então **OBS Display Capture** e gravadores de tela desktop a incluem, mantendo transparência, click-through e topo.
+  - Para ocultar a mira em capturas, defina `captureVisible:false` (via IPC `cq:set`; sem controle na interface nesta versão). A janela passa a usar `setContentProtection` do Electron (`WDA_EXCLUDEFROMCAPTURE`).
+  - **OBS Game Capture** captura apenas o framebuffer do jogo: janelas externas do overlay **não** aparecem, com ou sem a opção. Use OBS Display Capture.
+  - A mudança de configuração só surte efeito na próxima composição do desktop; capturas iniciadas no mesmo instante podem ainda incluir a janela.
 - **Suporte Multimonitor e DPI Dinâmico:**
   - Alinhamento automático ao centro geométrico físico com suporte a escalas de 100%, 125%, 150%, 200% e multitelas.
 

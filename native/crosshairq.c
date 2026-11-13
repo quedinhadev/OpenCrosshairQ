@@ -1,4 +1,5 @@
-// Cleanroom Win32 snapshots + passive Raw Input. No hooks, injection, or game-memory access.
+// Cleanroom Win32 snapshots + passive Raw Input + passive low-level keyboard hook.
+// Observation only: no injection, no event suppression, no game-memory access.
 #define WIN32_LEAN_AND_MEAN
 #define _WIN32_WINNT 0x0601
 #define NAPI_VERSION 8
@@ -9,6 +10,7 @@
 #include <wchar.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #define NAPI(call) do { if ((call) != napi_ok) { \
   napi_throw_error(env, NULL, "Node-API operation failed"); return NULL; \
@@ -409,6 +411,187 @@ static napi_value get_mouse_snapshot(napi_env env, napi_callback_info info) {
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Passive low-level keyboard hook (WH_KEYBOARD_LL).
+// Every event is forwarded with CallNextHookEx: the hook never blocks or rewrites
+// input. State is lock-free so the hook callback stays short; the JS side polls
+// snapshots like the Raw Input mouse path.
+// ponytail: one process-wide hook, fixed 256 VK slots; add per-device routing or
+// scan-code tracking only if layouts other than VK-based shortcuts are required.
+#define KEYBOARD_KEYS 256
+
+typedef struct {
+  volatile LONG pressed;
+  volatile LONG64 down_count, up_count;
+} keyboard_key;
+
+typedef struct {
+  volatile LONG running;
+  volatile LONG error;
+  keyboard_key keys[KEYBOARD_KEYS];
+  HANDLE thread, ready, stop;
+  HHOOK hook;
+} keyboard_input;
+
+static keyboard_input s_keyboard;
+static SRWLOCK keyboard_lifecycle = SRWLOCK_INIT;
+
+static void keyboard_count(volatile LONG64 *counter) {
+  if (*counter < 9007199254740991LL) InterlockedIncrement64(counter);
+}
+
+static LRESULT CALLBACK keyboard_proc(int code, WPARAM wparam, LPARAM lparam) {
+  if (code == HC_ACTION &&
+      (wparam == WM_KEYDOWN || wparam == WM_SYSKEYDOWN || wparam == WM_KEYUP || wparam == WM_SYSKEYUP)) {
+    DWORD vk = ((const KBDLLHOOKSTRUCT *)lparam)->vkCode;
+    if (vk < KEYBOARD_KEYS) {
+      keyboard_key *key = &s_keyboard.keys[vk];
+      if (wparam == WM_KEYDOWN || wparam == WM_SYSKEYDOWN) {
+        keyboard_count(&key->down_count);
+        InterlockedExchange(&key->pressed, 1);
+      } else {
+        keyboard_count(&key->up_count);
+        InterlockedExchange(&key->pressed, 0);
+      }
+    }
+  }
+  return CallNextHookEx(NULL, code, wparam, lparam);
+}
+
+static DWORD WINAPI keyboard_thread(void *data) {
+  keyboard_input *input = data;
+  DWORD error = ERROR_SUCCESS;
+  MSG message;
+  input->hook = SetWindowsHookExW(WH_KEYBOARD_LL, keyboard_proc, GetModuleHandleW(NULL), 0);
+  if (!input->hook) error = GetLastError();
+  else InterlockedExchange(&input->running, 1);
+  SetEvent(input->ready);
+  if (!error) {
+    for (;;) {
+      DWORD wait = MsgWaitForMultipleObjectsEx(1, &input->stop, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+      if (wait == WAIT_OBJECT_0) break;
+      if (wait == WAIT_FAILED) { error = GetLastError(); break; }
+      while (PeekMessageW(&message, NULL, 0, 0, PM_REMOVE)) {
+        if (message.message == WM_QUIT) goto finished;
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+      }
+    }
+  }
+finished:
+  if (input->hook) { UnhookWindowsHookEx(input->hook); input->hook = NULL; }
+  InterlockedExchange(&input->running, 0);
+  if (error) InterlockedExchange(&input->error, (LONG)error);
+  for (size_t i = 0; i < KEYBOARD_KEYS; ++i) InterlockedExchange(&input->keys[i].pressed, 0);
+  SetEvent(input->ready);
+  return error;
+}
+
+// Caller holds keyboard_lifecycle; worker never takes it, so joining cannot deadlock.
+static DWORD keyboard_join(keyboard_input *input) {
+  DWORD error = ERROR_SUCCESS;
+  if (input->thread) {
+    SetEvent(input->stop);
+    WaitForSingleObject(input->thread, INFINITE);
+    if (!GetExitCodeThread(input->thread, &error)) error = GetLastError();
+    CloseHandle(input->thread);
+    input->thread = NULL;
+  }
+  if (input->ready) { CloseHandle(input->ready); input->ready = NULL; }
+  if (input->stop) { CloseHandle(input->stop); input->stop = NULL; }
+  return error;
+}
+
+static void keyboard_cleanup(void *arg) {
+  (void)arg;
+  AcquireSRWLockExclusive(&keyboard_lifecycle);
+  keyboard_join(&s_keyboard);
+  ReleaseSRWLockExclusive(&keyboard_lifecycle);
+}
+
+static napi_value keyboard_error(napi_env env, const char *operation, DWORD error) {
+  napi_value code, message, result, value;
+  NAPI(napi_create_string_utf8(env, "ERR_KEYBOARD_INPUT", NAPI_AUTO_LENGTH, &code));
+  NAPI(napi_create_string_utf8(env, operation, NAPI_AUTO_LENGTH, &message));
+  NAPI(napi_create_error(env, code, message, &result));
+  NUMBER(result, "win32Code", error);
+  NAPI(napi_throw(env, result));
+  return NULL;
+}
+
+static napi_value start_keyboard_input(napi_env env, napi_callback_info info) {
+  keyboard_input *input = &s_keyboard;
+  DWORD error = ERROR_SUCCESS;
+  napi_value result;
+  (void)info;
+  AcquireSRWLockExclusive(&keyboard_lifecycle);
+  if (input->thread && WaitForSingleObject(input->thread, 0) == WAIT_TIMEOUT) {
+    ReleaseSRWLockExclusive(&keyboard_lifecycle);
+    NAPI(napi_get_undefined(env, &result));
+    return result;
+  }
+  keyboard_join(input);
+  ZeroMemory(input->keys, sizeof(input->keys));
+  InterlockedExchange(&input->error, 0);
+  input->ready = CreateEventW(NULL, TRUE, FALSE, NULL);
+  if (!input->ready) error = GetLastError();
+  if (!error) {
+    input->stop = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (!input->stop) error = GetLastError();
+  }
+  if (!error) {
+    input->thread = CreateThread(NULL, 0, keyboard_thread, input, 0, NULL);
+    if (!input->thread) error = GetLastError();
+  }
+  if (!error) {
+    if (WaitForSingleObject(input->ready, INFINITE) == WAIT_FAILED) error = GetLastError();
+    else if (!input->running) error = input->error ? (DWORD)input->error : ERROR_OPERATION_ABORTED;
+  }
+  if (error) {
+    keyboard_join(input);
+    InterlockedExchange(&input->error, (LONG)error);
+  }
+  ReleaseSRWLockExclusive(&keyboard_lifecycle);
+  if (error) return keyboard_error(env, "Cannot install keyboard hook", error);
+  NAPI(napi_get_undefined(env, &result));
+  return result;
+}
+
+static napi_value stop_keyboard_input(napi_env env, napi_callback_info info) {
+  DWORD error;
+  napi_value result;
+  (void)info;
+  AcquireSRWLockExclusive(&keyboard_lifecycle);
+  error = keyboard_join(&s_keyboard);
+  ReleaseSRWLockExclusive(&keyboard_lifecycle);
+  if (error) return keyboard_error(env, "Keyboard hook stopped with error", error);
+  NAPI(napi_get_undefined(env, &result));
+  return result;
+}
+
+static napi_value get_keyboard_snapshot(napi_env env, napi_callback_info info) {
+  napi_value result, keys, entry, value;
+  char name[8];
+  (void)info;
+  NAPI(napi_create_object(env, &result));
+  BOOLEAN(result, "running", s_keyboard.running != 0);
+  NUMBER(result, "errorCode", s_keyboard.error);
+  NAPI(napi_create_object(env, &keys));
+  for (DWORD vk = 0; vk < KEYBOARD_KEYS; ++vk) {
+    LONG64 down = s_keyboard.keys[vk].down_count;
+    LONG pressed = s_keyboard.keys[vk].pressed;
+    if (!down && !pressed) continue;
+    snprintf(name, sizeof(name), "%lu", (unsigned long)vk);
+    NAPI(napi_create_object(env, &entry));
+    BOOLEAN(entry, "pressed", pressed != 0);
+    NUMBER(entry, "downCount", down);
+    NUMBER(entry, "upCount", s_keyboard.keys[vk].up_count);
+    NAPI(napi_set_named_property(env, keys, name, entry));
+  }
+  NAPI(napi_set_named_property(env, result, "keys", keys));
+  return result;
+}
+
 NAPI_MODULE_INIT() {
   mouse_input *input = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*input));
   if (!input) { napi_throw_error(env, NULL, "Cannot allocate mouse state"); return NULL; }
@@ -423,12 +606,20 @@ NAPI_MODULE_INIT() {
     napi_throw_error(env, NULL, "Cannot install xinput cleanup");
     return NULL;
   }
+  if (napi_add_env_cleanup_hook(env, keyboard_cleanup, NULL) != napi_ok) {
+    HeapFree(GetProcessHeap(), 0, input);
+    napi_throw_error(env, NULL, "Cannot install keyboard cleanup");
+    return NULL;
+  }
   napi_property_descriptor methods[] = {
     { "getForegroundProcess", NULL, get_foreground_process, NULL, NULL, NULL, napi_default, NULL },
     { "getXInputSnapshot", NULL, get_xinput_snapshot, NULL, NULL, NULL, napi_default, NULL },
     { "startMouseInput", NULL, start_mouse_input, NULL, NULL, NULL, napi_default, input },
     { "getMouseSnapshot", NULL, get_mouse_snapshot, NULL, NULL, NULL, napi_default, input },
-    { "stopMouseInput", NULL, stop_mouse_input, NULL, NULL, NULL, napi_default, input }
+    { "stopMouseInput", NULL, stop_mouse_input, NULL, NULL, NULL, napi_default, input },
+    { "startKeyboardInput", NULL, start_keyboard_input, NULL, NULL, NULL, napi_default, NULL },
+    { "getKeyboardSnapshot", NULL, get_keyboard_snapshot, NULL, NULL, NULL, napi_default, NULL },
+    { "stopKeyboardInput", NULL, stop_keyboard_input, NULL, NULL, NULL, napi_default, NULL }
   };
   NAPI(napi_define_properties(env, exports, ARRAYSIZE(methods), methods));
   return exports;
