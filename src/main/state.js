@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const Layers = require('../shared/layers');
+const PROFILE_KEYS = ['visible', 'hidden', 'scale', 'offsetX', 'offsetY', 'limitSize', 'showSecondary', 'captureVisible', 'model', 'model2', 'layers', 'drawing', 'displayId', 'crosshairSize', 'crosshairOffset', 'defaultCrosshair', 'keybinds', 'firingOptions'];
 
 // Shape validation for the remappable action shortcuts (aim/fire/reload).
 // Values are kept verbatim: key names are resolved by main/keymap.js.
@@ -10,6 +11,10 @@ function keybindBinding(binding, label) {
   if (!binding || typeof binding !== 'object' || Array.isArray(binding)) throw new TypeError(`atalho ${label} inválido`);
   if (binding.enabled !== undefined && typeof binding.enabled !== 'boolean') throw new TypeError(`${label}.enabled inválido`);
   if (binding.pressType !== undefined && !['press', 'hold', 'toggle'].includes(binding.pressType)) throw new TypeError(`${label}.pressType inválido`);
+  if (binding.controller !== undefined && binding.controller !== null) {
+    if (typeof binding.controller !== 'object' || Array.isArray(binding.controller)
+      || !require('./keybind-dispatch').CONTROLLER_KEYS.includes(binding.controller.key)) throw new TypeError(`${label}.controller inválido`);
+  }
   if (binding.pc === undefined || binding.pc === null) return;
   if (typeof binding.pc !== 'object' || Array.isArray(binding.pc)) throw new TypeError(`${label}.pc inválido`);
   if (typeof binding.pc.key !== 'string' || !binding.pc.key) throw new TypeError(`${label}.pc.key inválido`);
@@ -101,11 +106,21 @@ function accelerator(binding) {
 function createToggleShortcut(api, toggle) {
   let registered = null;
   let signature = null;
+  let requestedSignature = null;
+  let appliedBindings = null;
   let status = { registered: false, accelerator: null, error: null };
   return {
-    update(keybinds, commit = () => {}) {
+    update(keybinds, commit) {
       const binding = keybinds?.globalShortcut ?? DEFAULTS.keybinds.globalShortcut;
       const nextSignature = JSON.stringify(binding);
+      // An action-only edit must not reacquire an unavailable, unchanged global shortcut.
+      const actionOnlyEdit = JSON.stringify(keybinds) !== appliedBindings;
+      if (commit && nextSignature === requestedSignature && (actionOnlyEdit || !status.error)) {
+        if (nextSignature === signature) status = { registered: !!registered, accelerator: registered, error: null };
+        try { commit(); appliedBindings = JSON.stringify(keybinds); return { ...status, committed: true }; }
+        catch (error) { return { ...status, committed: false, error: error.message }; }
+      }
+      if (!commit) { requestedSignature = nextSignature; appliedBindings = JSON.stringify(keybinds); }
       let candidate = null;
       let acquired = false;
       try {
@@ -116,15 +131,17 @@ function createToggleShortcut(api, toggle) {
         }
         status = { registered: !!candidate, accelerator: candidate, error: null };
         // Keep old registration until persistence succeeds; failed commits release only candidate.
-        commit();
+        commit?.();
         if (registered && registered !== candidate) api.unregister(registered);
         registered = candidate;
         signature = nextSignature;
+        requestedSignature = nextSignature;
+        appliedBindings = JSON.stringify(keybinds);
       } catch (error) {
         if (acquired) api.unregister(candidate);
         status = { registered: !!registered, accelerator: candidate, error: error.message };
       }
-      return status;
+      return { ...status, committed: !status.error };
     },
     getStatus: () => status,
   };
@@ -199,13 +216,23 @@ function createStore(userDataDir, initialProfiles) {
     currentProfileId: Object.hasOwn(profiles, selected) ? selected : 'default',
     profiles: structuredClone(profiles),
   };
+  const journal = saved.profileSettingsJournal;
+  if (journal && journal.id === selected && journal.settings && Object.hasOwn(profiles, selected)) {
+    try {
+      const settings = validatePatch(Object.fromEntries(PROFILE_KEYS.filter(key => key in journal.settings).map(key => [key, journal.settings[key]])), state);
+      state.profiles.profiles[selected] = { ...state.profiles.profiles[selected], settings };
+    } catch (error) { console.error('[profile recovery]', error.message); }
+  }
   state = deepFreeze(state);
 
   const listeners = new Set();
   const persist = (next = state) => {
     const temporary = `${file}.tmp`;
     try {
-      fs.writeFileSync(temporary, JSON.stringify(next, null, 2));
+      const id = next.profiles.currentProfileId;
+      const profileSettingsJournal = next.profiles.profiles[id]?.settings
+        ? { id, settings: Object.fromEntries(PROFILE_KEYS.map(key => [key, next[key]])) } : null;
+      fs.writeFileSync(temporary, JSON.stringify({ ...next, profileSettingsJournal }, null, 2));
       fs.renameSync(temporary, file);
     } catch (error) {
       try { fs.unlinkSync(temporary); } catch { /* temp may not exist */ }
@@ -214,7 +241,9 @@ function createStore(userDataDir, initialProfiles) {
   };
   const set = (patch) => {
     patch = structuredClone(validatePatch(patch, state));
-    const next = deepFreeze({ ...state, ...patch });
+    const next = { ...state, ...patch };
+    // Live settings and their selected profile journal persist in one atomic write.
+    deepFreeze(next);
     if (JSON.stringify(next) === JSON.stringify(state)) return;
     // ponytail: synchronous commit keeps memory/disk atomic; serialize async writes if settings grow.
     persist(next);

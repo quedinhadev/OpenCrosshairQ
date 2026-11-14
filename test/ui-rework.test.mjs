@@ -770,3 +770,65 @@ test('UI Rework: Miniaturas auto-fit computes bounds including stroke without ro
   assert.doesNotMatch(env.elements.modelPreview.innerHTML, /rx="/, 'modelSvg arms must not have rounded corners (rx)');
   assert.match(env.elements.modelPreview.innerHTML, /viewBox="-128 -128 256 256"/, 'modelPreview preserves state preview viewBox');
 });
+
+test('UI polish: delegated audio opt-in, dedup, throttle, disabled and background silence', async () => {
+  const listeners = {};
+  let now = 1000, sounds = 0, focused = true;
+  const param = { setValueAtTime() {}, exponentialRampToValueAtTime() {} };
+  class AudioContext {
+    state = 'running'; currentTime = 0;
+    createOscillator() { return { frequency: param, connect() {}, disconnect() {}, start() { sounds++; }, stop() {} }; }
+    createGain() { return { gain: param, connect() {}, disconnect() {} }; }
+  }
+  const env = createEnv({ window: { AudioContext }, document: { addEventListener(type, fn) { listeners[type] = fn; }, hasFocus: () => focused }, Date: { now: () => now } });
+  await tick();
+  const button = { disabled: false, getAttribute: () => null, closest: () => null };
+  const event = { target: { closest: () => button } };
+  listeners.click(event);
+  assert.equal(sounds, 0, 'sound starts muted');
+  env.elements.optionSounds.listeners.change({ target: { checked: true } });
+  assert.equal(sounds, 1);
+  listeners.click(event);
+  assert.equal(sounds, 1, 'same interaction never doubles sound');
+  now += 200; listeners.click(event);
+  assert.equal(sounds, 2);
+  button.disabled = true; now += 200; listeners.click(event);
+  assert.equal(sounds, 2);
+  button.disabled = false; focused = false; listeners.click(event);
+  assert.equal(sounds, 2);
+  focused = true;
+  const range = { target: { matches: () => true } };
+  now += 200; listeners.input(range);
+  now += 80; listeners.input(range);
+  assert.equal(sounds, 3, 'slider limited to one cue per 120ms');
+  env.elements.optionSounds.listeners.change({ target: { checked: false } });
+  now += 200; listeners.click(event);
+  assert.equal(sounds, 3);
+  assert.equal(env.localData.get('cq.soundEffects'), 'false');
+});
+
+test('UI polish: explicit enable-all and mouse capture do not silently enable bindings', async () => {
+  const captures = [];
+  const env = createEnv({ cq: { setKeybindCapture(active) { captures.push(active); } } });
+  await tick();
+  const keybinds = Object.fromEntries(['globalShortcut', 'aim', 'fire', 'reload'].map(key => [key, { enabled: false, pc: { key: 'R', modifiers: [] } }]));
+  env.emitState({ model: {}, keybinds });
+  assert.match(env.elements.keybindSummary.textContent, /4 atalho/);
+  assert.equal(env.elements.btnEnableKeybinds.hidden, false);
+  const fireButton = env.elements.keybindList.children[2].children[0].children[0].children[1];
+  fireButton.listeners.click();
+  assert.deepEqual(captures, [true], 'capture suspends runtime before receiving input');
+  env.windowListeners.mousedown({ button: 2, preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(captures, [true, false], 'mouse remap resumes runtime after saving');
+  assert.equal(env.patches.at(-1).keybinds.fire.pc.key, 'RightClick');
+  assert.equal(env.patches.at(-1).keybinds.fire.enabled, false);
+  env.elements.btnEnableKeybinds.listeners.click();
+  for (const key of ['aim', 'fire', 'reload']) assert.equal(env.patches.at(-1).keybinds[key].enabled, true);
+  assert.equal(env.patches.at(-1).keybinds.globalShortcut.enabled, false, 'global registration requires its own explicit toggle');
+  fireButton.listeners.click();
+  env.windowListeners.blur();
+  assert.deepEqual(captures, [true, false, true, false], 'focus loss cancels capture');
+  fireButton.listeners.click();
+  env.windowListeners.keydown({ key: 'Escape', target: {} });
+  assert.deepEqual(captures.slice(-2), [true, false], 'Escape cancels capture');
+});

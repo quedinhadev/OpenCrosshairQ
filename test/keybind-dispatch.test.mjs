@@ -18,24 +18,31 @@ try {
   const handlers = new Map();
   const events = new Map();
   const sends = [];
-  let onKeyboard = null;
+  let onKeyboard = null, onInput = null, globalToggle = null;
+  let captureTimeout = null;
+  const windows = [];
+  const quitHandlers = [];
   // Structured clone through JSON: payloads are created inside the VM realm, so
   // their prototypes differ from the test realm.
   const actions = () => JSON.parse(JSON.stringify(sends.filter((entry) => entry.channel === 'cq:action').map((entry) => entry.state)));
   const display = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 };
   class Window {
-    constructor() { this.webContents = { mainFrame: {}, send: (channel, state) => sends.push({ channel, state }), setZoomFactor() {} }; }
-    setIgnoreMouseEvents() {} setAlwaysOnTop() {} setContentProtection() {} loadFile() {} once() {} on() {} setBounds() {} isDestroyed() { return false; }
+    constructor() {
+      windows.push(this); this.events = new Map(); this.rendererEvents = new Map();
+      this.webContents = { mainFrame: {}, on: (name, fn) => this.rendererEvents.set(name, fn), send: (channel, state) => sends.push({ channel, state }), setZoomFactor() {} };
+    }
+    on(name, fn) { this.events.set(name, fn); }
+    setIgnoreMouseEvents() {} setAlwaysOnTop() {} setContentProtection() {} loadFile() {} once() {} setBounds() {} isDestroyed() { return false; }
   }
-  const app = { isPackaged: false, getVersion: () => '0.1.0', whenReady: () => Promise.resolve(), getPath: () => dir, once() {}, on() {} };
+  const app = { isPackaged: false, getVersion: () => '0.1.0', whenReady: () => Promise.resolve(), getPath: () => dir, once: (name, fn) => { if (name === 'before-quit') quitHandlers.push(fn); }, on() {} };
   const electron = {
     app, BrowserWindow: Window, Tray: null, Menu: null, dialog: {},
     ipcMain: { on: (c, f) => events.set(c, f), handle: (c, f) => handlers.set(c, f) },
-    globalShortcut: { register: () => true, unregister() {}, unregisterAll() {} },
+    globalShortcut: { register: (_combo, fn) => { globalToggle = fn; return true; }, unregister() {}, unregisterAll() {} },
     screen: { getAllDisplays: () => [display], getPrimaryDisplay: () => display, on() {} },
   };
   const foreground = () => ({ getStatus: () => ({ available: false, foreground: null }), start() {}, stop() {} });
-  const mouse = () => ({ getStatus: () => ({}), start() {}, stop() {} });
+  const mouse = (_native, callback) => { onInput = callback; return { getStatus: () => ({}), start() {}, stop() { throw new Error('mouse stop failed'); } }; };
   vm.runInNewContext(source, {
     require(name) {
       if (name === 'electron') return electron;
@@ -52,7 +59,7 @@ try {
       return localRequire(name);
     },
     __dirname: path.resolve('src/main'), process: { platform: 'win32', env: {} }, console,
-    setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+    setTimeout: (fn, delay) => { if (delay === 30000) captureTimeout = fn; return 1; }, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(typeof onKeyboard, 'function', 'main assina o monitor de teclado');
@@ -113,14 +120,18 @@ try {
       reload: { enabled: true, pc: { modifiers: [], key: 'R' } },
     },
   });
-  assert.deepEqual(actions().at(-1), { action: 'aim', pressed: false }, 'troca de keybinds reseta o hold');
+  assert.deepEqual(actions().at(-1), { action: 'reset', pressed: false }, 'troca de keybinds reseta todos os latches');
   sends.length = 0;
   onKeyboard(status(down('K')));
-  assert.deepEqual(actions(), [{ action: 'aim', pressed: true }], 'nova borda após reset republica');
+  assert.deepEqual(actions(), [], 'reset bloqueia tecla já segurada');
+  onKeyboard(status(up('K')));
+  onKeyboard(status({ [VK.K]: { pressed: true, downCount: 2 } }));
+  assert.deepEqual(actions(), [{ action: 'aim', pressed: true }], 'nova borda após soltar republica');
   onKeyboard(status(down('K')));
   assert.equal(actions().length, 1, 'repetição não duplica após reset');
 
   // Modificador ausente não dispara mesmo com a tecla pressionada.
+  onKeyboard(status(up('K')));
   send('cq:set', {
     keybinds: {
       aim: { enabled: true, pressType: 'hold', pc: { modifiers: ['Shift'], key: 'K' } },
@@ -136,9 +147,30 @@ try {
 
   // Falha do hook não derruba o despacho (status inválido = nada pressionado).
   onKeyboard({ running: false, error: 'hook lost', keys: down('K') });
-  assert.deepEqual(actions().at(-1), { action: 'aim', pressed: false }, 'monitor caído libera o hold');
+  assert.deepEqual(actions().at(-1), { action: 'reset', pressed: false }, 'monitor caído limpa todos os latches');
 
-  console.log('PASS: dispatch de atalhos (hold/toggle, reload one-shot, disabled, reset, modificadores)');
+  const ui = windows[0];
+  const captureEvent = { sender: ui.webContents, senderFrame: ui.webContents.mainFrame };
+  const capture = value => events.get('cq:keybind-capture')(captureEvent, value);
+  sends.length = 0;
+  events.get('cq:keybind-capture')({ sender: windows[1].webContents, senderFrame: windows[1].webContents.mainFrame }, true);
+  events.get('cq:keybind-capture')({ sender: ui.webContents, senderFrame: {} }, true);
+  capture('true'); assert.equal(actions().length, 0, 'IPC rejeita overlay, subframe e boolean não estrito');
+  capture(true); assert.deepEqual(actions().at(-1), { action: 'reset', pressed: false });
+  const hiddenBefore = handlers.get('cq:get-state')().hidden;
+  globalToggle(); assert.equal(handlers.get('cq:get-state')().hidden, hiddenBefore, 'atalho global suspenso durante captura');
+  onKeyboard(status({ ...down('K'), 0x10: { pressed: true } }));
+  capture(false); sends.length = 0;
+  onKeyboard(status({ ...down('K'), 0x10: { pressed: true } }));
+  assert.equal(actions().length, 0, 'held capturado não executa no fim');
+  for (const cleanup of [() => ui.events.get('blur')(), () => ui.rendererEvents.get('render-process-gone')(), () => captureTimeout()]) {
+    capture(true); cleanup();
+    const before = handlers.get('cq:get-state')().hidden; globalToggle();
+    assert.equal(handlers.get('cq:get-state')().hidden, !before, 'blur/crash/timeout liberam atalho global');
+  }
+  onInput({ available: true, mouse: {}, controllers: [] });
+  assert.doesNotThrow(() => quitHandlers.forEach(fn => fn()), 'mouse stop throw não impede restante cleanup e persistência');
+  console.log('PASS: dispatch main + captura autorizada + global guard + blur/crash/timeout + cleanup');
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
 }

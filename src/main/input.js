@@ -6,7 +6,7 @@ function createInputMonitor(native, onChange) {
   let error = null;
   let lastMouse = { left: 0, right: 0 };
   let lastPad = { left: false, right: false };
-  let state = { available: false, error: null, left: { pressed: false, downCount: 0 }, right: { pressed: false, downCount: 0 } };
+  let state = { available: false, mouseAvailable: false, controllersAvailable: false, error: null, mouse: {}, controllers: [], actionsDispatched: true, left: { pressed: false, downCount: 0 }, right: { pressed: false, downCount: 0 } };
   function emit(next) {
     if (JSON.stringify(next) !== JSON.stringify(state)) { state = next; onChange(structuredClone(state)); }
   }
@@ -18,12 +18,15 @@ function createInputMonitor(native, onChange) {
     catch (failure) { currentError = failure.message; }
     try { pads = native?.getXInputSnapshot?.(); }
     catch (failure) { currentError = failure.message; }
-    const mouseAvailable = mouse?.running && mouse.errorCode === 0;
+    const mouseAvailable = !!(mouse?.running && mouse.errorCode === 0);
+    const controllersAvailable = pads?.available === true;
     if (mouse && !mouseAvailable) currentError = `Mouse input unavailable (${mouse.errorCode})`;
-    const next = { available: !!(mouseAvailable || pads?.available), error: currentError };
+    const next = { available: mouseAvailable || controllersAvailable, mouseAvailable, controllersAvailable, error: currentError,
+      mouse: mouseAvailable ? { left: mouse.left, right: mouse.right, middle: mouse.middle } : {},
+      controllers: controllersAvailable ? pads.controllers || [] : [], actionsDispatched: true };
     for (const key of ['left', 'right']) {
       const mouseCount = mouseAvailable ? mouse[key].downCount : lastMouse[key];
-      const padPressed = !!pads?.controllers?.some(pad => pad.connected && (key === 'left' ? pad.rightTrigger : pad.leftTrigger) > 0);
+      const padPressed = !!(controllersAvailable && pads.controllers?.some(pad => pad.connected && (key === 'left' ? pad.rightTrigger : pad.leftTrigger) > 0));
       const increment = Math.max(0, mouseCount - lastMouse[key]) + Number(padPressed && !lastPad[key]);
       next[key] = {
         pressed: !!(mouseAvailable && mouse[key].pressed) || padPressed,
@@ -49,10 +52,13 @@ function createInputMonitor(native, onChange) {
     stop() {
       if (!started) return;
       clearInterval(timer); timer = null; started = false;
-      if (mouseStarted) { native.stopMouseInput(); mouseStarted = false; }
+      if (mouseStarted) {
+        try { native.stopMouseInput(); } catch (failure) { error = failure.message; }
+        mouseStarted = false;
+      }
       lastMouse = { left: 0, right: 0 };
       lastPad = { left: false, right: false };
-      emit({ ...state, available: false, left: { ...state.left, pressed: false }, right: { ...state.right, pressed: false } });
+      emit({ ...state, available: false, mouseAvailable: false, controllersAvailable: false, error, mouse: {}, controllers: [], left: { ...state.left, pressed: false }, right: { ...state.right, pressed: false } });
     },
   };
 }

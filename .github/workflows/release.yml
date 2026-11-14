@@ -48,9 +48,12 @@ jobs:
       - name: Build native addon
         shell: pwsh
         run: ./native/build.ps1 -NodeInclude $env:NODE_API_INCLUDE
+      - run: npm run test:native
       - run: npm run test:electron
       - name: Build distributions without publishing
         run: npm run dist -- --publish never
+      - name: Verify packaged source and native addon parity
+        run: node scripts/verify-package-parity.cjs
       - name: Generate verified release metadata
         run: node scripts/generate-release-metadata.cjs
       - name: Upload draft release

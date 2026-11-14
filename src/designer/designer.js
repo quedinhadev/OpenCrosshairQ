@@ -20,6 +20,23 @@
 
   // ---------- bridge: iframe dentro da janela principal ----------
   const inFrame = !!(window.parent && window.parent !== window);
+  // Parent owns opt-in audio; canvas/game input never produces interface cues.
+  if (inFrame && typeof document.addEventListener === 'function') {
+    const cue = (type) => window.parent.postMessage({ source: 'cq-designer', type: 'cq:ui-sfx', cue: type }, '*');
+    document.addEventListener('click', (e) => {
+      const button = e.target?.closest?.('button, [role="button"]');
+      if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') cue('click');
+    }, true);
+    document.addEventListener('change', (e) => {
+      if (!e.target?.disabled && e.target?.matches?.('select, input[type="checkbox"], input[type="color"]')) cue('toggle');
+    });
+    let lastStep = 0;
+    document.addEventListener('input', (e) => {
+      if (!e.target?.matches?.('input[type="range"]') || e.target.disabled || Date.now() - lastStep < 120) return;
+      lastStep = Date.now();
+      cue('step');
+    });
+  }
   if (inFrame && !window.cq) {
     let seq = 0;
     const pending = new Map();

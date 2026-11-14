@@ -17,7 +17,8 @@ O **OpenCrosshairQ** usa sobreposição externa ao jogo, com funcionamento offli
    - O executável não lê estados internos de partidas, posições de inimigos ou variáveis do jogo.
 4. **Isolamento de Entrada:**
    - O suporte opcional a detecção de cliques usa a API nativa do Windows (Raw Input / XInput em modo escuta do dispositivo local), sem sintetizar teclas ou cliques falsos (sem macros e sem automação).
-   - Os atalhos de teclado (Mirar, Atirar, Recarregar) usam um hook passivo `WH_KEYBOARD_LL` que apenas observa as teclas e repassa todo evento ao sistema via `CallNextHookEx`; nenhuma entrada é sintetizada, bloqueada ou suprimida.
+   - Os atalhos de teclado (Mirar, Atirar, Recarregar) usam um hook passivo `WH_KEYBOARD_LL` que apenas observa as teclas e repassa todo evento ao sistema via `CallNextHookEx`; nenhuma entrada é sintetizada, bloqueada ou suprimida pelo aplicativo.
+   - O harness de desenvolvimento `test/keybind-live.cjs` gera teclas sintéticas raras exclusivamente para testar o caminho Windows → hook → overlay em um perfil temporário. Não faz parte dos arquivos distribuídos, não deve ser executado durante partidas e não comprova compatibilidade com anti-cheats.
 5. **Offline-First e Sem Telemetria:**
    - Miras e perfis funcionam offline e ficam no diretório `userData` do Electron.
    - A partir do código-fonte v0.2.0, instalações NSIS e Portable consultam GitHub Releases via HTTPS para verificar e baixar atualizações. Desenvolvimento não ativa atualização automática.

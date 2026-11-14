@@ -2,9 +2,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 
-const source = fs.readFileSync('src/overlay/overlay.js', 'utf8');
+const source = process.env.CQ_TEST_APP_ROOT
+  ? createRequire(import.meta.url)('@electron/asar').extractFile(process.env.CQ_TEST_APP_ROOT, path.join('src', 'overlay', 'overlay.js')).toString('utf8')
+  : fs.readFileSync('src/overlay/overlay.js', 'utf8');
 function runtime(options = {}) {
   let now = 0, nextId = 0, writes = 0;
   const frames = new Map(), elements = new Map(), listeners = {};
@@ -51,6 +54,112 @@ function runtime(options = {}) {
     remove: (id) => { const node = elements.get('layer-' + id); if (node) node.isConnected = false; return elements.delete('layer-' + id); } };
 }
 function near(actual, expected, message) { assert.ok(Math.abs(actual - expected) < 1e-6, `${message}: ${actual} != ${expected}`); }
+
+// Main-owned aim edges must animate right-triggered layers; raw snapshots stay inert.
+{
+  const r = runtime();
+  r.state([r.layer({ trigger: 'right', pressType: 'hold', releaseBehavior: 'reset', duration: 100, easing: 'linear' })], {
+    keybinds: { aim: { enabled: true, pressType: 'hold', pc: { key: 'RightClick', modifiers: [] } } },
+  });
+  r.window.cq.action({ action: 'aim', pressed: true });
+  r.tick(25);
+  const quarter = r.scale();
+  assert.ok(quarter > 1, 'semantic aim starts right animation');
+  r.input(false, 0, { actionsDispatched: true, right: { pressed: true, downCount: 1 } });
+  r.window.cq.action({ action: 'aim', pressed: true });
+  r.tick(25); near(r.scale(), 1.2, 'raw and duplicate aim never restart right animation');
+  r.window.cq.action({ action: 'aim', pressed: false });
+  assert.equal(r.transform(), '', 'semantic aim release resets right animation');
+  r.mq.matches = true; r.mq.change();
+  r.window.cq.action({ action: 'aim', pressed: true }); r.tick(50);
+  assert.equal(r.transform(), '', 'reduced motion suppresses semantic right animation');
+}
+
+for (const pressType of ['press', 'hold']) {
+  for (const releaseBehavior of ['reset', 'pause', 'reverse']) {
+    const r = runtime();
+    r.state([r.layer({ trigger: 'right', pressType, releaseBehavior, duration: 100, easing: 'linear' })]);
+    r.window.cq.action({ action: 'aim', pressed: true }); r.tick(25);
+    const quarter = r.scale();
+    assert.ok(quarter > 1, `semantic aim starts ${pressType}`);
+    r.window.cq.action({ action: 'aim', pressed: false });
+    if (releaseBehavior === 'reset') assert.equal(r.transform(), '', 'right reset on release');
+    if (releaseBehavior === 'pause') { r.tick(20); near(r.scale(), quarter, 'right pause on release'); }
+    if (releaseBehavior === 'reverse') { r.tick(10); assert.ok(r.scale() < quarter, 'right reverse on release'); }
+  }
+}
+
+// Real main order: monitor snapshot reaches overlay before semantic dispatcher edges.
+for (const source of ['keyboard', 'mouse', 'controller']) {
+  for (const pressType of ['hold', 'toggle']) {
+    for (const failure of ['exception', 'unavailable']) {
+      const require = createRequire(import.meta.url);
+      const { createInputMonitor } = require('../src/main/input.js');
+      const { createKeybindDispatcher } = require('../src/main/keybind-dispatch.js');
+      const bindings = structuredClone(require('../src/main/state.js').DEFAULTS.keybinds);
+      bindings.aim = { enabled: true, pressType, pc: { key: source === 'mouse' ? 'RightClick' : 'F23', modifiers: [] }, controller: source === 'controller' ? { key: 'leftTrigger' } : null };
+      bindings.fire = { enabled: true, pressType: 'hold', pc: { key: source === 'mouse' ? 'LeftClick' : 'F24', modifiers: [] }, controller: source === 'controller' ? { key: 'rightTrigger' } : null };
+      const r = runtime();
+      r.state([
+        r.layer({ trigger: 'right', pressType: 'hold', releaseBehavior: 'reset', duration: 100, easing: 'linear' }, 'aim'),
+        r.layer({ trigger: 'left', pressType: 'hold', releaseBehavior: 'reset', duration: 100, easing: 'linear' }, 'fire'),
+      ], { keybinds: bindings });
+      const events = [];
+      const dispatcher = createKeybindDispatcher(() => bindings, event => { events.push(event); r.window.cq.action(event); });
+      let failed = false, count = 0;
+      const mouse = { running: true, errorCode: 0, left: { pressed: false, downCount: 0 }, right: { pressed: false, downCount: 0 } };
+      const pads = { available: true, controllers: [{ connected: true, leftTrigger: 0, rightTrigger: 0 }] };
+      const input = createInputMonitor({
+        startMouseInput() {}, stopMouseInput() {},
+        getMouseSnapshot() {
+          if (failed && source !== 'mouse') {
+            if (failure === 'exception') throw new Error('mouse failed');
+            return { ...mouse, running: false, errorCode: 6 };
+          }
+          return mouse;
+        },
+        getXInputSnapshot() {
+          if (failed && source === 'mouse') {
+            if (failure === 'exception') throw new Error('XInput failed');
+            return { ...pads, available: false };
+          }
+          return pads;
+        },
+      }, status => { r.window.cq.input(status); dispatcher.input(status); });
+      const press = held => {
+        if (held) count++;
+        if (source === 'keyboard') dispatcher.keyboard({ running: true, keys: { 134: { pressed: held, downCount: count }, 135: { pressed: held, downCount: count } } });
+        if (source === 'mouse') for (const side of ['left', 'right']) mouse[side] = { pressed: held, downCount: count };
+        if (source === 'controller') pads.controllers[0].leftTrigger = pads.controllers[0].rightTrigger = Number(held);
+        input.poll();
+      };
+      try {
+        dispatcher.keyboard({ running: true, keys: {} }); input.start(); events.length = 0;
+        press(true); r.tick(25);
+        assert.equal(r.primary.style.display, 'none', `${source} aim hides before failure`);
+        assert.notEqual(r.transform('aim'), ''); assert.notEqual(r.transform('fire'), '');
+        const before = events.length;
+        failed = true; input.poll();
+        assert.equal(r.primary.style.display, 'none', `${source}/${pressType}/${failure} keeps healthy aim`);
+        assert.notEqual(r.transform('aim'), '', 'partial failure keeps right animation');
+        assert.notEqual(r.transform('fire'), '', 'partial failure keeps left animation');
+        r.tick(25);
+        for (const id of ['aim', 'fire']) near(Number(r.transform(id).match(/^scale\(([^)]+)\)$/)?.[1]), 1.2, 'timeline continues without restart');
+        failed = false; input.poll();
+        assert.equal(events.length, before, 'recovery neither resets nor replays healthy actions');
+        assert.equal(r.primary.style.display, 'none', 'recovery preserves hold/latch');
+        press(false);
+        assert.equal(r.primary.style.display, pressType === 'hold' ? 'block' : 'none', 'release preserves toggle only');
+        assert.equal(r.transform('aim'), ''); assert.equal(r.transform('fire'), '');
+        press(true);
+        assert.equal(r.primary.style.display, pressType === 'hold' ? 'none' : 'block', 'fresh press still works');
+        dispatcher.reset();
+        assert.equal(r.primary.style.display, 'block', 'semantic reset remains authoritative');
+        assert.equal(r.transform('aim'), ''); assert.equal(r.transform('fire'), '');
+      } finally { input.stop(); }
+    }
+  }
+}
 
 // No state.animations producer: layers alone enable runtime. Explicit false gate is ignored too.
 for (const animations of [undefined, { active: false }]) {
@@ -369,13 +478,15 @@ for (const gate of [{ hidden: true }, { visible: false }, { profileInFocus: fals
 }
 // Exercise the actual change-only input transport, including snapshots with historical counters.
 const { createInputMonitor } = createRequire(import.meta.url)('../src/main/input.js');
+const { createKeybindDispatcher } = createRequire(import.meta.url)('../src/main/keybind-dispatch.js');
 for (const pressType of ['hold', 'toggle']) {
   const r = aiming(pressType, false);
+  const dispatcher = createKeybindDispatcher(() => ({ aim: { ...aimBinding, pressType } }), payload => r.window.cq.action(payload));
   let mouse = { running: true, errorCode: 0, left: { pressed: false, downCount: 0 }, right: { pressed: false, downCount: 3 } };
   let emissions = 0;
   const monitor = createInputMonitor({
     startMouseInput() {}, stopMouseInput() {}, getMouseSnapshot: () => mouse,
-  }, (snapshot) => { emissions++; r.window.cq.input(snapshot); });
+  }, (snapshot) => { emissions++; r.window.cq.input(snapshot); dispatcher.input(snapshot); });
   monitor.start();
   try {
     assert.equal(monitor.getStatus().right.downCount, 3);
@@ -403,9 +514,9 @@ for (const pressType of ['hold', 'toggle']) {
     r.window.cq.action({ action: 'aim', pressed: true });
     assert.equal(r.primary.style.display, 'none', `keyboard aim ${pressType} press hides`);
     r.window.cq.action({ action: 'aim', pressed: true });
-    assert.equal(r.primary.style.display, pressType === 'hold' ? 'none' : 'block', `repeated press ${pressType}`);
+    assert.equal(r.primary.style.display, 'none', `repeated press ${pressType} is not another edge`);
     r.window.cq.action({ action: 'aim', pressed: false });
-    assert.equal(r.primary.style.display, 'block', `keyboard aim ${pressType} release shows`);
+    assert.equal(r.primary.style.display, pressType === 'hold' ? 'block' : 'none', `keyboard aim ${pressType} release`);
   }
   {
     const r = aiming('toggle');
@@ -423,11 +534,16 @@ for (const pressType of ['hold', 'toggle']) {
     assert.equal(r.transform(), '', 'keyboard fire release applies release policy');
     r.window.cq.action({ action: 'fire', pressed: true });
     r.tick(25);
-    r.window.cq.action({ action: 'reload' });
+    r.window.cq.action({ action: 'reload', pressed: true });
     assert.equal(r.transform(), '', 'reload resets firing animation');
     assert.equal(r.frames.size, 0, 'reload stops pending animation frames');
-    r.window.cq.action({ action: 'reload' });
+    r.window.cq.action({ action: 'reload', pressed: true });
     assert.equal(r.transform(), '', 'reload is idempotent');
+    r.window.cq.action({ action: 'fire', pressed: false });
+    r.window.cq.action({ action: 'fire', pressed: true }); r.tick(25);
+    assert.notEqual(r.transform(), '', 'new fire follows reload');
+    r.window.cq.action({ action: 'reload', pressed: true });
+    assert.equal(r.transform(), '', 'reload one-shots do not require a release IPC');
     for (const payload of [null, undefined, {}, { action: 42 }, { action: 'unknown', pressed: true }]) r.window.cq.action(payload);
     assert.equal(r.transform(), '', 'malformed action payloads are inert');
   }
@@ -441,5 +557,95 @@ for (const pressType of ['hold', 'toggle']) {
     r.tick(50);
     assert.equal(r.transform(), '', 'reduced motion never paints keyboard fire');
   }
+}
+// Main-owned dispatch must not replay raw mouse edges alongside cq:action.
+{
+  const r = aiming('toggle');
+  r.input(false, 0, { actionsDispatched: true });
+  r.window.cq.action({ action: 'aim', pressed: true });
+  r.window.cq.action({ action: 'aim', pressed: false });
+  r.input(false, 0, { actionsDispatched: true, right: { pressed: false, downCount: 1 } });
+  assert.equal(r.primary.style.display, 'none', 'raw snapshot never toggles dispatched aim twice');
+}
+// Binding gates apply equally to passive snapshots and action IPC. No real profile writes.
+for (const enabled of [false, true]) {
+  const r = runtime();
+  r.state([r.layer({ trigger: 'left', duration: 100, easing: 'linear' })], {
+    keybinds: { fire: { enabled, pc: { key: 'RightClick', modifiers: [] } } },
+  });
+  r.input(false, 0);
+  r.input(false, 0, { right: { pressed: false, downCount: 1 } });
+  r.tick(50);
+  near(r.scale(), enabled ? 1.2 : 1, 'fire observes configured mouse side and enabled');
+  r.input(true, 1); r.tick(50);
+  assert.equal(r.transform(), '', 'unbound left click never starts fire');
+  if (!enabled) {
+    r.window.cq.action({ action: 'fire', pressed: true }); r.tick(50);
+    assert.equal(r.transform(), '', 'disabled fire ignores action IPC');
+  }
+}
+{
+  const r = aiming('toggle');
+  for (const pressed of [undefined, null, 1, 'false', {}, []]) r.window.cq.action({ action: 'aim', pressed });
+  assert.equal(r.primary.style.display, 'block', 'non-boolean pressed never toggles aim');
+  r.window.cq.action({ action: 'aim', pressed: true });
+  r.window.cq.action({ action: 'reset', pressed: false });
+  assert.equal(r.primary.style.display, 'block', 'explicit reset clears toggle latch');
+  r.window.cq.action({ action: 'aim', pressed: true });
+  assert.equal(r.primary.style.display, 'none', 'reset clears keyboard edge baseline');
+}
+{
+  const r = runtime();
+  r.state([r.layer({ trigger: 'left', pressType: 'hold', releaseBehavior: 'pause', duration: 100, easing: 'linear' })]);
+  r.input(true, 1); r.tick(25);
+  r.window.cq.action({ action: 'fire', pressed: true });
+  r.window.cq.action({ action: 'fire', pressed: false });
+  r.tick(25); near(r.scale(), 1.2, 'keyboard release never releases held mouse fire');
+  r.window.cq.action({ action: 'reset', pressed: false });
+  assert.equal(r.transform(), '', 'reset clears fire even when mouse is held');
+  r.tick(0); assert.equal(r.frames.size, 0, 'reset leaves no fire frame pending');
+  r.input(false, 1); r.input(true, 2); r.tick(25);
+  near(r.scale(), 1 + .2 * Math.sin(Math.PI / 4), 'reset clears paused fire progress before next press');
+}
+for (const pressed of [undefined, null, 1, 'false', {}, []]) {
+  const r = runtime();
+  r.state([r.layer({ trigger: 'left', duration: 100, easing: 'linear' })]);
+  r.window.cq.action({ action: 'fire', pressed }); r.tick(50);
+  assert.equal(r.transform(), '', 'malformed fire edge never animates');
+  r.input(false, 1); r.tick(25); const transform = r.transform();
+  r.window.cq.action({ action: 'reload', pressed });
+  assert.equal(r.transform(), transform, 'malformed reload never clears animation');
+}
+{
+  const r = runtime();
+  const layers = [r.layer({ trigger: 'left', duration: 100, easing: 'linear' })];
+  const keybinds = { fire: { enabled: true, pc: { key: 'F23', modifiers: [] } } };
+  r.state(layers, { keybinds });
+  r.input(true, 1); r.tick(25);
+  assert.equal(r.transform(), '', 'keyboard remap disables default mouse fire');
+  r.window.cq.action({ action: 'fire', pressed: true }); r.tick(25);
+  r.window.cq.action({ action: 'fire', pressed: true }); r.tick(25);
+  near(r.scale(), 1.2, 'duplicate fire action never restarts timeline');
+  r.state(layers, { keybinds }); r.tick(10);
+  assert.ok(r.scale() > 1, 'unrelated broadcast preserves fire');
+  r.state(layers, { keybinds, profiles: { currentProfileId: 'other' } });
+  assert.equal(r.transform(), '', 'profile switch clears fire even with identical layer id and options');
+}
+for (const enabled of [true, false]) {
+  const r = runtime();
+  r.state([r.layer({ trigger: 'left', duration: 100, easing: 'linear' })], {
+    keybinds: { reload: { enabled, pc: { key: 'RightClick', modifiers: [] } } },
+  });
+  r.input(false, 1); r.tick(25);
+  r.input(false, 1, { right: { pressed: false, downCount: 1 } });
+  assert.equal(r.transform() === '', enabled, 'mouse reload obeys enabled and configured side');
+}
+{
+  const r = aiming('toggle');
+  r.render({ keybinds: { aim: { ...aimBinding, pressType: 'toggle', pc: { key: 'LeftClick', modifiers: [] } } } });
+  r.input(false, 0); r.input(false, 1);
+  assert.equal(r.primary.style.display, 'none', 'aim remapped to left click toggles once');
+  r.right(true, 1);
+  assert.equal(r.primary.style.display, 'none', 'unbound right click never toggles aim');
 }
 console.log('PASS: overlay animations/geometry/cleanup; aim hold/toggle, coalesced edges, integrated input baseline/recovery + 100 unchanged polls, profile/config reset, disabled, reduced motion, canonical gates, keyboard cq:action aim/fire/reload');

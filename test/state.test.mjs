@@ -94,7 +94,19 @@ try {
   assert.equal(recovered.get().displayId, null);
   assert.equal(Object.hasOwn(recovered.get(), 'arbitrary'), false);
   assert.equal(recovered.get().profiles.currentProfileId, 'default');
-  console.log('PASS: typed store/disk boundaries + atomic persistence failures + profile selection');
+  fs.writeFileSync(path.join(dir, 'settings.json'), '{}');
+  assert.doesNotThrow(() => createStore(dir, { profiles }), 'legacy settings without selected profile or journal');
+  const withSettings = { default: { id: 'default', name: 'disk metadata', settings: structuredClone(DEFAULTS) } };
+  const journalStore = createStore(dir, { profiles: withSettings });
+  const remap = structuredClone(DEFAULTS.keybinds); remap.fire.pc.key = 'K';
+  journalStore.set({ keybinds: remap });
+  const afterCrash = createStore(dir, { profiles: withSettings });
+  assert.equal(afterCrash.get().profiles.profiles.default.settings.keybinds.fire.pc.key, 'K', 'crash before profile debounce restores current remap');
+  assert.equal(withSettings.default.settings.keybinds.fire.pc.key, 'LeftClick', 'profile file still old in crash fixture');
+  assert.equal(afterCrash.get().profiles.profiles.default.name, 'disk metadata', 'recovery preserves profile metadata');
+  for (const key of ['leftTrigger', 'rightTrigger', 'faceWest', 'leftThumb', 'dpadUp']) assert.doesNotThrow(() => validatePatch({ keybinds: { fire: { pc: null, controller: { key } } } }));
+  for (const controller of [{ key: 'buttonX' }, { key: 'toString' }, [], 'leftTrigger', {}]) assert.throws(() => validatePatch({ keybinds: { fire: { pc: null, controller } } }), /controller/);
+  console.log('PASS: typed store/disk boundaries + atomic persistence failures + profile journal recovery');
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
 }

@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License MIT">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6.svg" alt="Windows Platform">
-  <img src="https://img.shields.io/badge/tests-296%20passing-brightgreen.svg" alt="Tests 296 Passing">
+  <a href="https://github.com/quedinhadev/OpenCrosshairQ/actions/workflows/ci.yml"><img src="https://github.com/quedinhadev/OpenCrosshairQ/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/electron-45.0.0-47848F.svg" alt="Electron">
   <img src="https://img.shields.io/badge/offline--first-100%25-success.svg" alt="Offline-First">
 </p>
@@ -24,7 +24,7 @@
 - [Por que OpenCrosshairQ?](#por-que-opencrosshairq)
 - [Segurança e Anti-Cheat](#segurança-e-anti-cheat)
 - [Principais Funcionalidades](#principais-funcionalidades)
-- [Download e Instalação (Release v0.1.0)](#download-e-instalação-release-v010)
+- [Download e Instalação](#download-e-instalação)
 - [Como Usar](#como-usar)
 - [Compilação a partir do Código-Fonte](#compilação-a-partir-do-código-fonte)
 - [Como Contribuir](#como-contribuir)
@@ -92,20 +92,20 @@ Essa arquitetura não equivale a uma mira física de monitor e não comprova apr
 
 ---
 
-## Download e Instalação (v0.2.0)
+## Download e Instalação
 
 Acesse a página de [Releases](https://github.com/quedinhadev/OpenCrosshairQ/releases) para baixar a versão mais recente.
 
 | Arquivo | Tamanho | Descrição |
 | :--- | :--- | :--- |
-| **`OpenCrosshairQ-Setup-0.2.0.exe`** | ~116 MB | Instalador completo do Windows. Cria atalhos no Menu Iniciar/Área de Trabalho e inclui assistente de desinstalação. |
+| **`OpenCrosshairQ-Setup-0.2.2.exe`** | ~116 MB | Instalador completo do Windows. Cria atalhos no Menu Iniciar/Área de Trabalho e inclui assistente de desinstalação. |
 | **`OpenCrosshairQ-Portable.exe`** | ~105 MB | Versão portátil. Sem necessidade de instalação: basta baixar, colocar em qualquer pasta e executar. |
 
 ### Verificação de Integridade (SHA-256)
 
 Para conferir integridade dos binários baixados, compare o hash SHA-256 com `SHA256SUMS.txt` da mesma release no PowerShell. Hash não substitui assinatura do editor:
 ```powershell
-Get-FileHash -Algorithm SHA256 OpenCrosshairQ-Setup-0.2.0.exe
+Get-FileHash -Algorithm SHA256 OpenCrosshairQ-Setup-0.2.2.exe
 Get-FileHash -Algorithm SHA256 OpenCrosshairQ-Portable.exe
 ```
 
@@ -159,10 +159,13 @@ Se preferir compilar o OpenCrosshairQ por conta própria:
    npm start
    ```
 
-5. Execute a suíte de testes (266 testes):
+5. Execute a suíte de testes:
    ```bash
    npm test
+   npm run test:native
+   npm run test:electron
    ```
+   No Windows, `npm run test:keybinds` testa main, hook e overlay com perfil temporário e teclas sintéticas raras. Não execute durante partidas. Mouse positivo e teclas físicas exigem validação manual. Para testar o payload empacotado, defina `CQ_TEST_APP_ROOT` com o caminho de `dist/win-unpacked/resources/app.asar`.
 
 6. Gere os instaladores de produção (NSIS e Portable):
    ```bash

@@ -213,8 +213,8 @@ static LRESULT CALLBACK mouse_window_proc(HWND window, UINT message, WPARAM wpar
       static const USHORT up[] = { RI_MOUSE_LEFT_BUTTON_UP, RI_MOUSE_RIGHT_BUTTON_UP, RI_MOUSE_MIDDLE_BUTTON_UP };
       for (size_t i = 0; i < ARRAYSIZE(down); ++i) {
         mouse_button *button = &input->snapshot.buttons[i];
-        // Count reported transitions, including an UP whose DOWN predates registration.
-        if (raw.data.mouse.usButtonFlags & down[i]) {
+        // Ignore repeated DOWN; keep UP whose DOWN predates registration.
+        if ((raw.data.mouse.usButtonFlags & down[i]) && !button->pressed) {
           button->pressed = TRUE;
           if (button->down_count < 9007199254740991ULL) ++button->down_count;
         }
@@ -447,8 +447,7 @@ static LRESULT CALLBACK keyboard_proc(int code, WPARAM wparam, LPARAM lparam) {
     if (vk < KEYBOARD_KEYS) {
       keyboard_key *key = &s_keyboard.keys[vk];
       if (wparam == WM_KEYDOWN || wparam == WM_SYSKEYDOWN) {
-        keyboard_count(&key->down_count);
-        InterlockedExchange(&key->pressed, 1);
+        if (!InterlockedExchange(&key->pressed, 1)) keyboard_count(&key->down_count);
       } else {
         keyboard_count(&key->up_count);
         InterlockedExchange(&key->pressed, 0);

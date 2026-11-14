@@ -22,16 +22,19 @@ function keyCode(name) {
   return 0;
 }
 
-// keys: { [vk]: { pressed, downCount, upCount } } from getKeyboardSnapshot().
-function isBindingDown(binding, keys) {
-  const pc = binding?.pc;
-  const vk = keyCode(pc?.key);
-  if (!vk || !keys || keys[vk]?.pressed !== true) return false;
-  for (const modifier of Array.isArray(pc?.modifiers) ? pc.modifiers : []) {
-    const code = keyCode(modifier);
-    if (!code || keys[code]?.pressed !== true) return false;
-  }
-  return true;
+const MODIFIER_CODES = { Ctrl: [0x11, 0xa2, 0xa3], Control: [0x11, 0xa2, 0xa3], Alt: [0x12, 0xa4, 0xa5], Shift: [0x10, 0xa0, 0xa1], Meta: [0x5b, 0x5c], Super: [0x5b, 0x5c] };
+function keyCodes(name) { return MODIFIER_CODES[name] || [keyCode(name)].filter(Boolean); }
+function isKeyDown(name, keys) { return keyCodes(name).some(code => keys?.[code]?.pressed === true); }
+function bindingDownCount(binding, keys) {
+  return keyCodes(binding?.pc?.key).reduce((count, code) => count + (keys?.[code]?.downCount || 0), 0);
+}
+function modifiersDown(binding, keys) {
+  return (Array.isArray(binding?.pc?.modifiers) ? binding.pc.modifiers : []).every(name => isKeyDown(name, keys));
 }
 
-module.exports = { keyCode, isBindingDown };
+// keys: { [vk]: { pressed, downCount, upCount } } from getKeyboardSnapshot().
+function isBindingDown(binding, keys) {
+  return isKeyDown(binding?.pc?.key, keys) && modifiersDown(binding, keys);
+}
+
+module.exports = { keyCode, isBindingDown, bindingDownCount, modifiersDown };

@@ -83,16 +83,24 @@
   }
   let state = null;
   const timelines = new Map();
-  // Aim sources: the right mouse button (while it is the configured binding) and
-  // the keyboard binding. Effective hiding depends on the activation type.
+  // Mouse and dispatched actions share semantic triggers, not physical buttons.
   let aimToggled = false;
   let aimMouseHeld = false;
   let aimKeyHeld = false;
-  let aimKey = null;
+  let bindingsKey = null;
   let aimInputReady = false;
+  const actionHeld = { aim: false, fire: false, reload: false };
+  const mouseHeld = { left: false, right: false };
+  const bindingEnabled = (action) => state?.keybinds?.[action]?.enabled !== false;
+  function mouseSide(action, fallback) {
+    const binding = state?.keybinds?.[action];
+    if (!binding) return fallback; // Legacy embedders without a keybind document.
+    if (!bindingEnabled(action) || binding.pc?.modifiers?.length) return null;
+    return ({ LeftClick: 'left', RightClick: 'right' })[binding.pc?.key] ?? null;
+  }
+  const triggerHeld = (side) => mouseHeld[side] || actionHeld[side === 'left' ? 'fire' : 'aim'];
   const aimMode = () => state?.keybinds?.aim?.enabled !== false && ['hold', 'toggle'].includes(state?.keybinds?.aim?.pressType)
     ? state.keybinds.aim.pressType : null;
-  const aimMouseBound = () => state?.keybinds?.aim?.pc?.key === 'RightClick';
   function aimEffective() {
     const mode = aimMode();
     if (mode === 'toggle') return aimToggled;
@@ -104,6 +112,12 @@
     aimMouseHeld = false;
     aimKeyHeld = false;
     aimInputReady = false;
+  }
+  function resetActions() {
+    resetAim();
+    for (const action of Object.keys(actionHeld)) actionHeld[action] = false;
+    mouseHeld.left = mouseHeld.right = false;
+    resetFiring();
   }
   function updateVisibility() {
     const shown = !!state && window.CQGameState.isCrosshairVisible(state) && !aimEffective();
@@ -220,8 +234,22 @@
   }
 
   function handleInput(payload) {
+    // Main-owned snapshots never reset semantic actions, even on provider errors.
+    // cq:action remains authoritative; raw counters only baseline the legacy path.
+    if (payload?.actionsDispatched === true) {
+      for (const side of ['left', 'right']) {
+        const cur = payload?.[side];
+        if (cur && Number.isSafeInteger(cur.downCount)) {
+          input[side].downCount = cur.downCount;
+          input[side].pressed = cur.pressed === true;
+        }
+      }
+      updateVisibility();
+      sync();
+      return;
+    }
     const invalid = payload?.available !== true || !!payload.error;
-    if (invalid) resetAim();
+    if (invalid) resetActions();
     const now = clock();
     for (const side of ['left', 'right']) {
       const previous = input[side];
@@ -229,51 +257,67 @@
       if (!invalid && (!cur || typeof cur.pressed !== 'boolean' || !Number.isSafeInteger(cur.downCount) || cur.downCount < previous.downCount)) continue;
       const down = !invalid && (cur.downCount > previous.downCount || cur.pressed && !previous.pressed);
       const up = !invalid && !cur.pressed && (previous.pressed || down);
-      if (side === 'right' && !invalid && aimMouseBound()) {
-        const mode = aimMode();
-        if (mode === 'hold') aimMouseHeld = cur.pressed;
-        else if (aimInputReady && mode === 'toggle' && down && (Math.max(1, cur.downCount - previous.downCount) % 2)) aimToggled = !aimToggled;
-        aimInputReady = true; // Initial/recovery snapshots baseline toggle; hold always uses current pressed.
+      for (const [action, trigger] of [['fire', 'left'], ['aim', 'right'], ['reload', null]]) {
+        if (mouseSide(action, trigger) !== side) continue;
+        if (action === 'aim' && !invalid) {
+          const mode = aimMode();
+          if (mode === 'hold') aimMouseHeld = cur.pressed;
+          else if (aimInputReady && mode === 'toggle' && down && (Math.max(1, cur.downCount - previous.downCount) % 2)) aimToggled = !aimToggled;
+          aimInputReady = true; // Recovery snapshots baseline toggle, not hold.
+        }
+        if (!trigger) {
+          if (down) resetFiring();
+          continue;
+        }
+        mouseHeld[trigger] = !invalid && cur.pressed;
+        animateTrigger(trigger, triggerHeld(trigger), down && !actionHeld[action], up && !triggerHeld(trigger), now);
       }
       if (!invalid) previous.downCount = cur.downCount;
       previous.pressed = !invalid && cur.pressed;
-      for (const t of timelines.values()) {
-        if (t.fo.trigger !== side) continue;
-        if (invalid) clear(t);
-        else if (!reducedMotion) {
-          // Process edges here, not in rAF: a complete click can occur between frames.
-          if (down && (t.fo.pressType !== 'hold' || cur.pressed)) start(t, now);
-          if (up) release(t, now);
-        }
-      }
     }
     updateVisibility();
     sync();
   }
 
-  // Keyboard shortcuts dispatched by the main process from the passive hook.
-  // `fire` mirrors the left-button trigger; `reload` restarts firing animations.
+  function animateTrigger(side, pressed, down, up, now) {
+    if (reducedMotion) return;
+    for (const t of timelines.values()) {
+      if (t.fo.trigger !== side) continue;
+      if (down && (t.fo.pressType !== 'hold' || pressed)) start(t, now);
+      if (up) release(t, now);
+    }
+  }
+  function resetFiring() {
+    for (const t of timelines.values()) if (['left', 'right'].includes(t.fo.trigger)) {
+      clear(t); t.time = 0;
+    }
+  }
+
+  // cq:action accepts strict edges; optional reset clears latches without
+  // confusing a normal toggle release with cancellation.
   function handleAction(payload) {
-    if (!payload || typeof payload.action !== 'string') return;
+    if (!payload || typeof payload.action !== 'string' || typeof payload.pressed !== 'boolean') return;
+    if (payload.action === 'reset' && payload.pressed === false) {
+      resetActions(); updateVisibility(); sync(); return;
+    }
+    if (!Object.hasOwn(actionHeld, payload.action) || !bindingEnabled(payload.action)) return;
+    if (payload.action !== 'reload' && actionHeld[payload.action] === payload.pressed) return;
+    const fireWasHeld = triggerHeld('left');
+    const aimWasHeld = triggerHeld('right');
+    if (payload.action !== 'reload') actionHeld[payload.action] = payload.pressed;
     const now = clock();
     if (payload.action === 'aim') {
       const mode = aimMode();
       if (mode === 'toggle') { if (payload.pressed) aimToggled = !aimToggled; }
       else if (mode === 'hold') aimKeyHeld = !!payload.pressed;
       else { aimKeyHeld = false; aimToggled = false; }
-    } else if (payload.action === 'reload') {
-      for (const t of timelines.values()) {
-        if (t.fo.trigger !== 'left' && t.fo.trigger !== 'right') continue;
-        clear(t);
-        t.time = 0;
-        t.mode = 'idle';
-      }
-    } else if (payload.action === 'fire' && !reducedMotion) {
-      for (const t of timelines.values()) {
-        if (t.fo.trigger !== 'left') continue;
-        if (payload.pressed) start(t, now);
-        else release(t, now);
-      }
+      const held = triggerHeld('right');
+      animateTrigger('right', held, !aimWasHeld && held, aimWasHeld && !held, now);
+    } else if (payload.action === 'reload' && payload.pressed) {
+      resetFiring();
+    } else if (payload.action === 'fire') {
+      const held = triggerHeld('left');
+      animateTrigger('left', held, !fireWasHeld && held, fireWasHeld && !held, now);
     }
     updateVisibility();
     sync();
@@ -299,7 +343,7 @@
         }));
         t = { id: l.id, key, fo, segments, total: segments.reduce((n, s) => n + s.delay + s.duration, 0), time: 0, mode: 'idle' };
         timelines.set(l.id, t);
-        if (fo.trigger === 'autoplay' || fo.pressType === 'hold' && input[fo.trigger].pressed) start(t, now);
+        if (fo.trigger === 'autoplay' || fo.pressType === 'hold' && triggerHeld(fo.trigger)) start(t, now);
       } else if (t.mode !== 'idle' && t.mode !== 'done') paint(t); // state may replace SVG nodes
     }
     for (const [id, t] of timelines) {
@@ -329,8 +373,8 @@
   }
 
   function render(s) {
-    const nextAimKey = JSON.stringify([s?.profiles?.currentProfileId, s?.keybinds?.aim]);
-    if (nextAimKey !== aimKey) { resetAim(); aimKey = nextAimKey; }
+    const nextBindingsKey = JSON.stringify([s?.profiles?.currentProfileId, ...['aim', 'fire', 'reload'].map((action) => s?.keybinds?.[action])]);
+    if (nextBindingsKey !== bindingsKey) { resetActions(); bindingsKey = nextBindingsKey; }
     state = s;
     updateVisibility();
     if (!state) {

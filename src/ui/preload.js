@@ -26,5 +26,6 @@ contextBridge.exposeInMainWorld('cq', {
     return () => ipcRenderer.removeListener('cq:update-state', listener);
   },
   windowControl: (action) => ipcRenderer.send('cq:window-control', action),
+  setKeybindCapture: (active) => ipcRenderer.send('cq:keybind-capture', !!active),
   onState: (fn) => ipcRenderer.on('cq:state', (_e, state) => fn(state)),
 });

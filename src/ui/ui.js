@@ -21,6 +21,8 @@
     const el = $('toast');
     if (!el) return;
     el.textContent = message;
+    if (/inválid|falh|erro|não foi|não suportad|bloquead|corrompid/i.test(message)) playSfx('error');
+    else if (/salv|copiad|importad|exportad|concluíd/i.test(message)) playSfx('success');
     el.classList.add('on');
     clearTimeout(toast.timer);
     toast.timer = setTimeout(() => el.classList.remove('on'), 2800);
@@ -108,56 +110,57 @@
   }
 
   let audioCtx = null;
-  function getAudioContext() {
-    if (typeof window === 'undefined') return null;
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return null;
-    if (!audioCtx) {
-      try { audioCtx = new AudioCtx(); } catch { /* unsupported */ }
-    }
-    return audioCtx;
-  }
+  let soundEnabled = loadJson('cq.soundEffects', false) === true;
+  let lastSoundAt = -Infinity;
   function playSfx(type) {
-    if (loadJson('cq.soundEffects', false) !== true) return;
-    const ctx = getAudioContext();
-    if (!ctx || ctx.state === 'closed') return;
+    if (!soundEnabled || document.hidden || (typeof document.hasFocus === 'function' && !document.hasFocus())) return;
+    const stamp = Date.now();
+    if (stamp - lastSoundAt < 65) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
     try {
+      if (!audioCtx || audioCtx.state === 'closed') audioCtx = new AudioCtx();
+      const ctx = audioCtx;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const tones = { click: [720, 380, .035, .025], toggle: [440, 660, .06, .025], success: [520, 880, .08, .035], error: [260, 160, .09, .025], step: [500, 450, .025, .012] };
+      const [from, to, duration, volume] = tones[type] || tones.click;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       const now = ctx.currentTime;
-      if (type === 'click') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, now);
-        osc.frequency.exponentialRampToValueAtTime(300, now + 0.035);
-        gain.gain.setValueAtTime(0.04, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.04);
-      } else if (type === 'toggle') {
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(440, now);
-        osc.frequency.setValueAtTime(660, now + 0.025);
-        gain.gain.setValueAtTime(0.035, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.065);
-      } else if (type === 'success') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(520, now);
-        osc.frequency.exponentialRampToValueAtTime(880, now + 0.07);
-        gain.gain.setValueAtTime(0.05, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.085);
-      }
-    } catch { /* audio not available */ }
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(from, now);
+      osc.frequency.exponentialRampToValueAtTime(to, now + duration);
+      gain.gain.setValueAtTime(volume, now);
+      gain.gain.exponentialRampToValueAtTime(.001, now + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+      osc.start(now);
+      osc.stop(now + duration + .005);
+      lastSoundAt = stamp;
+    } catch { /* Audio is optional; controls must remain usable. */ }
+  }
+
+  // Bubble after local handlers: the short deduplication window preserves their
+  // specific cue, while covering dynamically rendered controls without listeners.
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('click', (e) => {
+      const control = e.target?.closest?.('button, a[href], [role="button"]');
+      if (!control || control.disabled || control.getAttribute('aria-disabled') === 'true' || control.closest('.window-controls')) return;
+      playSfx('click');
+    });
+    document.addEventListener('change', (e) => {
+      if (e.target?.disabled || e.target?.id === 'optionSounds') return;
+      if (e.target?.matches?.('select, input[type="checkbox"], input[type="radio"], input[type="color"]')) playSfx('toggle');
+    });
+    let lastStepAt = -Infinity;
+    document.addEventListener('input', (e) => {
+      if (!e.target?.matches?.('input[type="range"]') || e.target.disabled) return;
+      const now = Date.now();
+      if (now - lastStepAt < 120) return;
+      lastStepAt = now;
+      playSfx('step');
+    });
   }
 
   const I18N = {
@@ -1032,6 +1035,7 @@
     else if (data.type === 'cq:onState') { window.cq.getState().then((s) => postToDesigner({ source: 'cq-parent', type: 'cq:state', payload: s })).catch(() => {}); }
     else if (data.type === 'cq:set') { if (data.payload && typeof data.payload === 'object' && !Array.isArray(data.payload)) set(data.payload); }
     else if (data.type === 'cq:close') showPage('crosshairs');
+    else if (data.type === 'cq:ui-sfx' && currentRoute === 'designer') playSfx(['click', 'toggle', 'step'].includes(data.cue) ? data.cue : 'click');
   }
   if (isApp) window.addEventListener('message', handleDesignerMessage);
   ensureDesignerFrame();
@@ -1095,7 +1099,7 @@
   }
   function closeModal() {
     const m = $('profileModal');
-    if (m) m.classList.remove('on');
+    if (m && m.classList.contains('on')) { m.classList.remove('on'); playSfx('click'); }
     if (lastFocusProfileModal && typeof lastFocusProfileModal.focus === 'function') {
       lastFocusProfileModal.focus();
     }
@@ -1136,7 +1140,7 @@
   }
   function closeRenameModal() {
     const modal = $('renameModal');
-    if (modal) modal.classList.remove('on');
+    if (modal && modal.classList.contains('on')) { modal.classList.remove('on'); playSfx('click'); }
     renamingTarget = null;
     if ($('renameModalTitle')) $('renameModalTitle').textContent = I18N[currentLang]?.renameModalTitle || 'Renomear Mira';
     if ($('renameInput')) $('renameInput').placeholder = I18N[currentLang]?.placeholderRename || 'Nome da mira';
@@ -1185,7 +1189,7 @@
   }
   function closeShareModal() {
     const modal = $('shareModal');
-    if (modal) modal.classList.remove('on');
+    if (modal && modal.classList.contains('on')) { modal.classList.remove('on'); playSfx('click'); }
   }
 
   function openImportModal() {
@@ -1199,7 +1203,7 @@
   }
   function closeImportModal() {
     const modal = $('importModal');
-    if (modal) modal.classList.remove('on');
+    if (modal && modal.classList.contains('on')) { modal.classList.remove('on'); playSfx('click'); }
   }
 
   async function applyImportPayload(parsed) {
@@ -1625,6 +1629,8 @@
   }
 
   let capturingAction = null;
+  let suppressCaptureClickUntil = 0;
+  let enableKeybindsPending = null;
   let captureBackup = null;
   let captureAttempt = null;
   const LABELS = { globalShortcut: 'Alternar Global', aim: 'Mirar', fire: 'Atirar', reload: 'Recarregar' };
@@ -1658,8 +1664,13 @@
     wrap.append(off, on);
     return wrap;
   }
+  function endCapture() {
+    capturingAction = null;
+    if (isApp) window.cq.setKeybindCapture?.(false);
+  }
   function beginCapture(action) {
     if (!LABELS[action]) return;
+    if (isApp) window.cq.setKeybindCapture?.(true);
     captureBackup = state?.keybinds?.[action] ? JSON.parse(JSON.stringify(state.keybinds[action])) : null;
     captureAttempt = null;
     capturingAction = action;
@@ -1672,6 +1683,16 @@
     host.innerHTML = '';
     const dict = I18N[currentLang] || I18N['pt-BR'];
     const kb = state.keybinds;
+    const disabledCount = ['globalShortcut', 'aim', 'fire', 'reload'].filter(key => kb[key]?.enabled === false).length;
+    if (enableKeybindsPending && enableKeybindsPending.every(key => kb[key]?.enabled === true)) {
+      enableKeybindsPending = null;
+      toast('Atalhos de ação ativados e confirmados. Confira o estado do monitor abaixo.');
+    }
+    if ($('keybindSummary')) $('keybindSummary').textContent = enableKeybindsPending ? 'Aguardando confirmação dos atalhos de ação…' : disabledCount ? `${disabledCount} atalho(s) desativado(s). Ative apenas quando quiser usar.` : 'Atalhos habilitados. Confira o registro e o monitor abaixo.';
+    if ($('btnEnableKeybinds')) {
+      $('btnEnableKeybinds').hidden = ['aim', 'fire', 'reload'].every(key => kb[key]?.enabled !== false);
+      $('btnEnableKeybinds').disabled = !!enableKeybindsPending;
+    }
     function addRow(action, label, icon, pill) {
       const tr = document.createElement('tr');
       const pcParts = formatPc(kb[action] || {});
@@ -1683,7 +1704,10 @@
       pcBtn.type = 'button';
       pcBtn.style.cssText = 'background:transparent;border:0;padding:0;cursor:pointer;';
       pcBtn.innerHTML = pcContent;
-      pcBtn.title = 'Clique e pressione a nova combinação (Escape cancela)';
+      pcBtn.className = 'kb-capture';
+      pcBtn.setAttribute('aria-label', `Alterar atalho de ${label}`);
+      pcBtn.setAttribute('aria-pressed', String(capturingAction === action));
+      pcBtn.title = 'Clique e pressione uma tecla ou botão do mouse (Escape cancela)';
       pcBtn.addEventListener('click', () => beginCapture(action));
       const ctl = ctlParts.length ? kbdHtml(ctlParts) : `<span class="kb-pad">${dict.kbUnassigned || 'Não atribuído'}</span>`;
       const aimOff = kb.aim?.enabled === false;
@@ -1770,14 +1794,30 @@
       : keyboard?.running ? 'Teclado: monitor passivo ativo.' : 'Teclado: monitor inativo.';
     const aimPress = kb.aim?.pressType === 'toggle' ? 'alternar' : 'segurar';
     const aimStatusText = kb.aim?.enabled === false ? 'Mirar: desativado.' : `Mirar: ${aimPress} com ${formatPc(kb.aim).join(' + ') || 'nenhuma tecla'}.`;
-    const fireStatusText = kb.fire?.enabled === false ? 'Atirar: desativado.' : `Atirar: ${formatPc(kb.fire).join(' + ') || 'nenhuma tecla'}.`;
-    const reloadStatusText = kb.reload?.enabled === false ? 'Recarregar: desativado.' : `Recarregar: ${formatPc(kb.reload).join(' + ') || 'nenhuma tecla'} (reinicia animações de tiro/mira).`;
+    const fireStatusText = kb.fire?.enabled === false ? 'Atirar: desativado.' : `Atirar: ${formatPc(kb.fire).join(' + ') || 'nenhuma tecla'} (somente camadas animadas).`;
+    const reloadStatusText = kb.reload?.enabled === false ? 'Recarregar: desativado.' : `Recarregar: ${formatPc(kb.reload).join(' + ') || 'nenhuma tecla'} (reinicia somente camadas animadas de tiro/mira).`;
     if ($('keybindStatus')) $('keybindStatus').textContent = [globalStatusText, keyboardStatusText, aimStatusText, fireStatusText, reloadStatusText].join(' ');
   }
 
+  if ($('btnEnableKeybinds')) $('btnEnableKeybinds').addEventListener('click', () => {
+    if (!state?.keybinds || enableKeybindsPending) return;
+    const next = { ...state.keybinds };
+    const requested = ['aim', 'fire', 'reload'];
+    enableKeybindsPending = requested;
+    for (const key of requested) next[key] = { ...next[key], enabled: true };
+    set({ keybinds: next });
+    renderKeybinds();
+    setTimeout(() => {
+      if (enableKeybindsPending !== requested) return;
+      enableKeybindsPending = null;
+      renderKeybinds();
+      toast('Ativação não confirmada. Confira o estado dos atalhos e tente novamente.');
+    }, 3500);
+  });
+
   try {
     const kbNote = document.querySelector && document.querySelector('.kb-note');
-    if (kbNote) kbNote.textContent = 'Clique na tecla para capturar uma nova combinação; Escape cancela. As teclas são lidas por um hook passivo do Windows: o app nunca bloqueia nem injeta entradas. Recarregar reinicia as animações de tiro/mira.';
+    if (kbNote) kbNote.textContent = 'Clique na tecla e pressione uma combinação ou botão esquerdo/direito do mouse; Escape cancela. O atalho global aceita apenas teclado. Leitura por hook passivo do Windows: o app nunca bloqueia nem injeta entradas no jogo. Atirar e Recarregar atuam somente em camadas animadas; uma mira estática não muda.';
   } catch { /* test harness lacks querySelector */ }
 
   // ---------- Settings ----------
@@ -1913,8 +1953,9 @@
   if ($('optionSounds')) {
     $('optionSounds').checked = loadJson('cq.soundEffects', false) === true;
     $('optionSounds').addEventListener('change', (e) => {
-      saveJson('cq.soundEffects', e.target.checked);
-      if (e.target.checked) playSfx('toggle');
+      soundEnabled = e.target.checked;
+      saveJson('cq.soundEffects', soundEnabled);
+      if (soundEnabled) playSfx('toggle');
     });
   }
 
@@ -2587,12 +2628,46 @@
 
   // ---------- Keyboard shortcuts ----------
   if (isApp) {
+    window.addEventListener('blur', () => {
+      if (!capturingAction) return;
+      endCapture();
+      renderKeybinds();
+    });
+    window.addEventListener('beforeunload', endCapture);
+    window.addEventListener('click', (e) => {
+      if (Date.now() >= suppressCaptureClickUntil) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+    window.addEventListener('mousedown', (e) => {
+      if (!capturingAction || ![0, 2].includes(e.button)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      suppressCaptureClickUntil = Date.now() + 450;
+      if (capturingAction === 'globalShortcut') {
+        toast('Atalho global aceita apenas teclado. Pressione uma tecla ou Escape.');
+        return;
+      }
+      const modifiers = [];
+      if (e.ctrlKey) modifiers.push('Ctrl');
+      if (e.altKey) modifiers.push('Alt');
+      if (e.shiftKey) modifiers.push('Shift');
+      if (e.metaKey) modifiers.push('Meta');
+      const action = capturingAction;
+      patchKeybind(action, { modifiers, key: e.button === 0 ? 'LeftClick' : 'RightClick' });
+      endCapture();
+      toast(`Combinação enviada para ${LABELS[action]}; confira o estado abaixo.`);
+      renderKeybinds();
+    }, true);
+    window.addEventListener('contextmenu', (e) => {
+      if (capturingAction || Date.now() < suppressCaptureClickUntil || e.target?.closest?.('.kb-capture')) e.preventDefault();
+    });
     window.addEventListener('keydown', (e) => {
       const tag = (e.target?.tagName || '').toLowerCase();
       const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
       if (capturingAction) {
         if (e.key === 'Escape') {
-          capturingAction = null;
+          endCapture();
           toast('Captura cancelada.');
           renderKeybinds();
           return;
@@ -2606,7 +2681,7 @@
         if (['Control', 'Alt', 'Shift', 'Meta'].includes(key)) return;
         if (!GLOBAL_KEY_RE.test(key)) {
           toast(`Tecla não suportada: ${key}.`);
-          capturingAction = null;
+          endCapture();
           renderKeybinds();
           return;
         }
@@ -2617,8 +2692,8 @@
         captureAttempt = capturingAction === 'globalShortcut' ? { mods, key, backup: captureBackup } : null;
         toast(capturingAction === 'globalShortcut'
           ? 'Combinação enviada; confira o estado do registro global.'
-          : `Combinação salva para ${LABELS[capturingAction]}.`);
-        capturingAction = null;
+          : `Combinação enviada para ${LABELS[capturingAction]}; confira o estado abaixo.`);
+        endCapture();
         renderKeybinds();
         return;
       }

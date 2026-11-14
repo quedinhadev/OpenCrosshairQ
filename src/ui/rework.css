@@ -1146,9 +1146,14 @@ input[type=range]:active::-webkit-slider-thumb {
   padding: 0 12px;
   transition: background-color var(--cq-motion-hover), color var(--cq-motion-hover);
 }
-.kb-toggle button.on {
+.kb-toggle button:last-child.on {
   background: var(--cq-accent);
-  color: #FFFFFF;
+  color: var(--cq-text-primary);
+}
+.kb-toggle button:first-child.on {
+  background: var(--cq-panel-active);
+  color: var(--cq-text-primary);
+  box-shadow: none;
 }
 
 /* ==========================================================================
@@ -1519,4 +1524,47 @@ input[type=range]:active::-webkit-slider-thumb {
     --cq-border-strong: rgba(255, 255, 255, 0.65);
     --cq-text-secondary: #CBD5E1;
   }
+}
+
+/* Operate polish: quiet hierarchy, readable status, one transition per route. */
+.kb-page { max-width: 920px; padding-top: 28px; }
+.kb-title { font-size: 22px; letter-spacing: -.025em; margin-bottom: 8px; }
+.kb-desc { line-height: 1.6; }
+.kb-note, #keybindStatus { color: var(--cq-text-secondary); font-size: 12px; line-height: 1.7; }
+.kb-note { margin-top: 20px; max-width: 82ch; }
+.kb-activation { display: flex; align-items: center; gap: 20px; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--cq-border-default); }
+#keybindSummary { font-size: 12px; line-height: 1.6; color: var(--cq-text-primary); }
+#btnEnableKeybinds { flex-shrink: 0; min-height: 36px; }
+#btnEnableKeybinds[hidden] { display: none; }
+.kb-capture { min-width: 96px; min-height: 36px; border-radius: var(--cq-radius-sm); }
+.kb-capture[aria-pressed="true"] { outline: 2px solid var(--cq-accent); outline-offset: 3px; }
+.kb-table tr:last-child td { border-bottom: 0; }
+.kb-table tbody tr:hover { background: var(--cq-bg-surface); }
+.kb-sub { color: var(--cq-text-secondary); }
+.status-line { overflow-wrap: anywhere; }
+:where(input[type="number"], .pos-input, kbd) { font-variant-numeric: tabular-nums; }
+:where(button, a, input, select, textarea):disabled { cursor: not-allowed; }
+
+@keyframes cqRouteEnter {
+  from { opacity: .55; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes cqStatusEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .page.on { animation: cqRouteEnter 180ms cubic-bezier(.2, 0, 0, 1); }
+  .toast.on { animation: cqStatusEnter 160ms cubic-bezier(.2, 0, 0, 1); }
+  .kb-capture { transition: transform var(--cq-motion-press); }
+  .kb-capture:active { transform: scale(.97); }
+}
+@media (max-width: 900px) {
+  .kb-page { padding: 20px 18px 40px; }
+  .kb-activation { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .kb-table td { padding: 10px 8px; }
+  .kb-toggle button { padding: 0 8px; }
+}
+@media (pointer: coarse) {
+  .kb-capture, .kb-toggle button, #btnEnableKeybinds { min-height: 48px; }
 }
