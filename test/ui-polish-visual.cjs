@@ -126,6 +126,11 @@ async function child() {
     await wait(() => !ui.webContents.isLoadingMainFrame(), 'UI main frame loaded');
     await wait(() => run(`!!window.__polish && !!document.getElementById('optionSounds') && !!document.querySelector('.page.on')`), 'real UI initialized');
     ui.showInactive();
+    await check('local DM Sans loaded in main UI', async () => {
+      const font = await run(`(async () => { await document.fonts.ready; return { check: document.fonts.check('13px "DM Sans"'), family: getComputedStyle(document.body).fontFamily, faces: [...document.fonts].filter(face => face.family === 'DM Sans').map(face => face.status) }; })()`);
+      assert.equal(font.check, true); assert.match(font.family, /DM Sans/); assert.ok(font.faces.some(status => status === 'loaded')); assert.ok(font.faces.every(status => status !== 'error'));
+      return font;
+    });
     const screenshot = async name => { const { data } = await cdp('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(out, `${name}.png`), Buffer.from(data, 'base64')); };
     for (const [width, height] of [[1120, 760], [900, 650]]) {
       await cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
@@ -174,6 +179,11 @@ async function child() {
     emit({ validationError: null });
     await run(`location.hash = '#/designer'`);
     await wait(() => run(`!!document.getElementById('designerFrame')?.contentDocument?.querySelector('#addModel')`), 'designer iframe ready');
+    await check('local DM Sans loaded in designer', async () => {
+      const font = await run(`(async () => { const doc = document.getElementById('designerFrame').contentDocument; await doc.fonts.ready; return { check: doc.fonts.check('13px "DM Sans"'), family: getComputedStyle(doc.body).fontFamily, faces: [...doc.fonts].filter(face => face.family === 'DM Sans').map(face => face.status) }; })()`);
+      assert.equal(font.check, true); assert.match(font.family, /DM Sans/); assert.ok(font.faces.some(status => status === 'loaded')); assert.ok(font.faces.every(status => status !== 'error'));
+      return font;
+    });
     for (const mode of ['on-focused', 'off-focused', 'on-unfocused']) {
       await run(`(() => { window.__polish.focus = true; const option = document.getElementById('optionSounds'); option.checked = ${mode !== 'off-focused'}; option.dispatchEvent(new Event('change', { bubbles: true })); window.__polish.focus = ${mode !== 'on-unfocused'}; })()`);
       for (const action of ['hide', 'show', 'duplicate', 'delete']) await check(`designer ${action} cue ${mode}`, async () => {

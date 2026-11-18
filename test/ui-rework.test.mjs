@@ -774,10 +774,11 @@ test('UI Rework: Miniaturas auto-fit computes bounds including stroke without ro
 test('UI polish: delegated audio opt-in, dedup, throttle, disabled and background silence', async () => {
   const listeners = {};
   let now = 1000, sounds = 0, focused = true;
+  const waves = [];
   const param = { setValueAtTime() {}, exponentialRampToValueAtTime() {} };
   class AudioContext {
     state = 'running'; currentTime = 0;
-    createOscillator() { return { frequency: param, connect() {}, disconnect() {}, start() { sounds++; }, stop() {} }; }
+    createOscillator() { return { frequency: param, set type(value) { waves.push(value); }, connect() {}, disconnect() {}, start() { sounds++; }, stop() {} }; }
     createGain() { return { gain: param, connect() {}, disconnect() {} }; }
   }
   const env = createEnv({ window: { AudioContext }, document: { addEventListener(type, fn) { listeners[type] = fn; }, hasFocus: () => focused }, Date: { now: () => now } });
@@ -788,6 +789,7 @@ test('UI polish: delegated audio opt-in, dedup, throttle, disabled and backgroun
   assert.equal(sounds, 0, 'sound starts muted');
   env.elements.optionSounds.listeners.change({ target: { checked: true } });
   assert.equal(sounds, 1);
+  assert.equal(waves.at(-1), 'triangle', 'tactile controls use a short triangle waveform');
   listeners.click(event);
   assert.equal(sounds, 1, 'same interaction never doubles sound');
   now += 200; listeners.click(event);
@@ -801,9 +803,12 @@ test('UI polish: delegated audio opt-in, dedup, throttle, disabled and backgroun
   now += 200; listeners.input(range);
   now += 80; listeners.input(range);
   assert.equal(sounds, 3, 'slider limited to one cue per 120ms');
+  const number = { target: { disabled: false, id: 'optionScale', matches: selector => selector.includes('number') } };
+  now += 200; listeners.change(number);
+  assert.equal(sounds, 4, 'committed numeric control has tactile feedback');
   env.elements.optionSounds.listeners.change({ target: { checked: false } });
   now += 200; listeners.click(event);
-  assert.equal(sounds, 3);
+  assert.equal(sounds, 4);
   assert.equal(env.localData.get('cq.soundEffects'), 'false');
 });
 

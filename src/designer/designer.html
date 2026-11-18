@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'">
   <title>OpenCrosshairQ — Criador</title>
+  <link rel="stylesheet" href="../shared/fonts.css">
   <style>
     /* Tokens medidos na UI do criador (amostragem de pixels + DOM vivo):
        fundo #1C1C1C, canvas #141414, painéis #1A1A1A/#1E1E1E, texto #B3B3B3,
@@ -23,11 +24,11 @@
       --motion-ease-std: cubic-bezier(0.2, 0, 0, 1);
       --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
       --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
-      font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+      font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
-    body { margin: 0; background: var(--bg); color: var(--txt); font: 13px/1.45 Inter, 'Segoe UI', system-ui, sans-serif; overflow: hidden; user-select: none; }
+    body { margin: 0; background: var(--bg); color: var(--txt); font: 13px/1.45 'DM Sans', 'Segoe UI', system-ui, sans-serif; overflow: hidden; user-select: none; }
     svg { display: block; }
     button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 6px; }
     input, select { font: inherit; color: var(--txt); background: none; border: none; outline: none; }

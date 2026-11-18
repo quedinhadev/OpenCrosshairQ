@@ -40,7 +40,7 @@
   --cq-warning: #F59E0B;
 
   /* Typography */
-  --cq-font-stack: system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", Inter, sans-serif;
+  --cq-font-stack: "DM Sans", system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", sans-serif;
   --cq-text-primary: #F2F5F9;
   --cq-text-secondary: #93A0B3;
   --cq-text-muted: #7C8B9E;
@@ -817,7 +817,7 @@ input[type=range]:active::-webkit-slider-thumb {
   height: 112px;
   display: grid;
   place-items: center;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.025), transparent 70%);
+  background: var(--cq-bg);
   position: relative;
 }
 .mod-card-preview {

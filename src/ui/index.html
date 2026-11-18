@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'">
   <title>OpenCrosshairQ</title>
+  <link rel="stylesheet" href="../shared/fonts.css">
   <style>
     :root {
       --bg: #0E1013;
@@ -33,8 +34,8 @@
       --blue: #67c1f5;
       --red: #ef4444;
       --purple: #a855f7;
-      --font: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
-      --head: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+      --font: "DM Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+      --head: "DM Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
       --r: 8px;
       --motion-dur-hover: 100ms;
       --motion-dur-press: 130ms;
@@ -418,7 +419,7 @@
 
     /* ---------- Keybinds ---------- */
     .kb-page { padding: 20px 24px 80px; }
-    .kb-title { font-family: var(--head); font-size: 18px; font-weight: 600; color: #d1d1d1; margin: 0 0 4px; }
+    .kb-title { font-family: var(--head); font-size: 18px; font-weight: 600; color: #d1d1d1; margin: 0 0 4px; text-wrap: balance; }
     .kb-desc { font-size: 13px; line-height: 1.5; color: rgba(255, 255, 255, .42); margin: 0 0 28px; }
     .kb-section { margin-bottom: 32px; }
     .kb-section-title { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; letter-spacing: .5px; color: #cfcfcf; margin: 0 0 12px; text-transform: uppercase; }
@@ -524,7 +525,7 @@
     .stream-card { background: #242424; border: 1px solid var(--line-2); border-radius: 10px; padding: 16px; margin-top: 14px; }
     .stream-status { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: #b3b3b3; margin-top: 12px; }
     .stream-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
-    .stream-status .dot.on { background: var(--green); box-shadow: 0 0 8px rgba(47, 199, 135, .5); }
+    .stream-status .dot.on { background: var(--green); }
     .stream-actions { display: flex; gap: 8px; margin-top: 14px; }
 
     .cur-opt { display: flex; align-items: flex-start; gap: 8px; font-size: 10.5px; line-height: 1.45; color: rgba(255, 255, 255, .55); }

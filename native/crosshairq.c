@@ -160,15 +160,49 @@ typedef struct {
   SRWLOCK lock;
   mouse_snapshot snapshot;
   HANDLE thread, ready, stop;
+  HHOOK hook;
 } mouse_input;
 
 // ponytail: one merged mouse stream; held-before-start/hot-unplug state is unknown.
 // Add per-device tracking + removal notifications only if multi-mouse semantics are needed.
-// No provenance claim: Raw Input is not proof of physical hardware input.
+// No provenance claim: Raw Input + passive WH_MOUSE_LL are not proof of physical hardware input.
 // Counters saturate at JS MAX_SAFE_INTEGER; successful restart resets all state.
 // Lifecycle is process-wide: Win32 permits only one mouse registration per process.
 // The host must reserve this usage: unrelated registration calls cannot be locked here.
 static SRWLOCK mouse_lifecycle = SRWLOCK_INIT;
+static mouse_input *s_active_mouse = NULL;
+
+static void mouse_apply_down(mouse_input *input, size_t idx) {
+  AcquireSRWLockExclusive(&input->lock);
+  mouse_button *button = &input->snapshot.buttons[idx];
+  if (!button->pressed) {
+    button->pressed = TRUE;
+    if (button->down_count < 9007199254740991ULL) ++button->down_count;
+  }
+  ReleaseSRWLockExclusive(&input->lock);
+}
+
+static void mouse_apply_up(mouse_input *input, size_t idx) {
+  AcquireSRWLockExclusive(&input->lock);
+  mouse_button *button = &input->snapshot.buttons[idx];
+  button->pressed = FALSE;
+  if (button->up_count < 9007199254740991ULL) ++button->up_count;
+  ReleaseSRWLockExclusive(&input->lock);
+}
+
+static LRESULT CALLBACK mouse_ll_proc(int code, WPARAM wparam, LPARAM lparam) {
+  (void)lparam;
+  mouse_input *input = (mouse_input *)InterlockedCompareExchangePointer((PVOID volatile *)&s_active_mouse, NULL, NULL);
+  if (code == HC_ACTION && input) {
+    if (wparam == WM_LBUTTONDOWN) mouse_apply_down(input, 0);
+    else if (wparam == WM_LBUTTONUP) mouse_apply_up(input, 0);
+    else if (wparam == WM_RBUTTONDOWN) mouse_apply_down(input, 1);
+    else if (wparam == WM_RBUTTONUP) mouse_apply_up(input, 1);
+    else if (wparam == WM_MBUTTONDOWN) mouse_apply_down(input, 2);
+    else if (wparam == WM_MBUTTONUP) mouse_apply_up(input, 2);
+  }
+  return CallNextHookEx(NULL, code, wparam, lparam);
+}
 
 static DWORD mouse_registration(HWND *target) {
   UINT count = 0;
@@ -200,32 +234,9 @@ static LRESULT CALLBACK mouse_window_proc(HWND window, UINT message, WPARAM wpar
     input = (mouse_input *)((CREATESTRUCTW *)lparam)->lpCreateParams;
     SetWindowLongPtrW(window, GWLP_USERDATA, (LONG_PTR)input);
   }
-  if (message == WM_INPUT && input) {
-    RAWINPUT raw;
-    UINT size = sizeof(raw);
-    UINT copied = GetRawInputData((HRAWINPUT)lparam, RID_INPUT, &raw, &size, sizeof(RAWINPUTHEADER));
-    DWORD error = copied == (UINT)-1 ? GetLastError() : ERROR_SUCCESS;
-    AcquireSRWLockExclusive(&input->lock);
-    if (error) input->snapshot.error = error;
-    else if (copied >= offsetof(RAWINPUT, data) + sizeof(RAWMOUSE) &&
-             raw.header.dwType == RIM_TYPEMOUSE) {
-      static const USHORT down[] = { RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_DOWN };
-      static const USHORT up[] = { RI_MOUSE_LEFT_BUTTON_UP, RI_MOUSE_RIGHT_BUTTON_UP, RI_MOUSE_MIDDLE_BUTTON_UP };
-      for (size_t i = 0; i < ARRAYSIZE(down); ++i) {
-        mouse_button *button = &input->snapshot.buttons[i];
-        // Ignore repeated DOWN; keep UP whose DOWN predates registration.
-        if ((raw.data.mouse.usButtonFlags & down[i]) && !button->pressed) {
-          button->pressed = TRUE;
-          if (button->down_count < 9007199254740991ULL) ++button->down_count;
-        }
-        if (raw.data.mouse.usButtonFlags & up[i]) {
-          button->pressed = FALSE;
-          if (button->up_count < 9007199254740991ULL) ++button->up_count;
-        }
-      }
-    }
-    ReleaseSRWLockExclusive(&input->lock);
-    // Required foreground WM_INPUT cleanup; never suppress legacy delivery.
+  if (message == WM_INPUT) {
+    // Chromium may replace this process-wide registration. Buttons come only
+    // from WH_MOUSE_LL, so Raw Input and the hook never count one event twice.
     DefWindowProcW(window, message, wparam, lparam);
     return 0;
   }
@@ -255,6 +266,9 @@ static DWORD WINAPI mouse_thread(void *data) {
     error = GetLastError(); goto finished;
   }
   registered = TRUE;
+  input->hook = SetWindowsHookExW(WH_MOUSE_LL, mouse_ll_proc, instance, 0);
+  if (!input->hook) { error = GetLastError(); goto finished; }
+  InterlockedExchangePointer((PVOID volatile *)&s_active_mouse, input);
   AcquireSRWLockExclusive(&input->lock);
   input->snapshot.running = TRUE;
   ReleaseSRWLockExclusive(&input->lock);
@@ -272,6 +286,8 @@ static DWORD WINAPI mouse_thread(void *data) {
     }
   }
 finished:
+  if (input->hook) { UnhookWindowsHookEx(input->hook); input->hook = NULL; }
+  InterlockedCompareExchangePointer((PVOID volatile *)&s_active_mouse, NULL, input);
   if (registered) {
     HWND target;
     DWORD registration = mouse_registration(&target);

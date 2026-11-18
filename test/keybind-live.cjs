@@ -1,8 +1,9 @@
 // Run from app: node test/keybind-live.cjs
 // CQ_TEST_APP_ROOT may select an app.asar payload, hosted by dev Electron.
 // CQ_TEST_ALLOW_BACKGROUND_KEYS=1 opts into rare global keyboard probes while
-// another app owns foreground. Never sends mouse input; otherwise requires test focus.
-// Win32 input here is synthetic, not evidence of physical-key behavior.
+// another app owns foreground. Mouse probes always require test focus and a
+// verified noninteractive point inside the test UI. Input is synthetic, not
+// evidence of physical-device or anti-cheat behavior.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -69,7 +70,7 @@ async function child() {
   for (const name of ['setLoginItemSettings', 'getLoginItemSettings']) {
     app[name] = (...args) => { loginCalls.push({ name, args }); throw new Error(`Test blocks ${name}`); };
   }
-  const report = { appRoot, host: process.execPath, electron: process.versions.electron, node: process.versions.node, platform: process.platform, arch: process.arch, isPackaged: app.isPackaged, userData: data, sessionData: session, input: 'Win32 SendInput synthetic keyboard; not physical keys', cases: [], rendererErrors: [], inputLog: [], hashes: {} };
+  const report = { appRoot, host: process.execPath, electron: process.versions.electron, node: process.versions.node, platform: process.platform, arch: process.arch, isPackaged: app.isPackaged, userData: data, sessionData: session, input: 'Win32 SendInput synthetic keyboard/mouse; not physical-device or anti-cheat evidence', cases: [], rendererErrors: [], inputLog: [], hashes: {} };
   let ui, overlay, driver, finished = false, captureActive = false;
   const waiting = new Map();
   let request = 0;
@@ -118,21 +119,38 @@ async function child() {
     if (overlay && !overlay.isDestroyed()) entry.dom = await dom();
     const native = Object.entries(require.cache).find(([file]) => file.endsWith('crosshairq.node'))?.[1].exports;
     if (native?.getKeyboardSnapshot) entry.keyboardSnapshot = native.getKeyboardSnapshot();
+    if (native?.getMouseSnapshot) entry.mouseSnapshot = native.getMouseSnapshot();
     if (captureActive) await capture(false);
     if (driver?.exitCode === null) await send('release');
     entry.finished = new Date().toISOString(); report.cases.push(entry); save();
     console.log(`${entry.status}: ${name}`);
   };
   const skip = message => { const error = new Error(message); error.skip = true; throw error; };
-  const send = async (op, keys = []) => {
-    if (op !== 'release' && process.env.CQ_TEST_ALLOW_BACKGROUND_KEYS !== '1') { ui.show(); ui.focus(); await wait(() => ui.isFocused(), 'test UI foreground'); }
+  const send = async (op, keys = [], point = null) => {
+    if (op !== 'release' && (process.env.CQ_TEST_ALLOW_BACKGROUND_KEYS !== '1' || op.startsWith('mouse-'))) { ui.show(); ui.focus(); await wait(() => ui.isFocused(), 'test UI foreground'); }
     const id = ++request;
     const reply = new Promise((resolve, reject) => waiting.set(id, { resolve, reject }));
-    driver.stdin.write(JSON.stringify({ id, op, keys }) + '\n');
+    driver.stdin.write(JSON.stringify({ id, op, keys, point }) + '\n');
     const response = await reply;
     report.inputLog.push({ id, op, keys, response });
     if (!response.ok) { if (response.skip) skip(response.error); throw new Error(response.error); }
     return response;
+  };
+  const mousePoint = async () => {
+    const point = await run(`(() => {
+      const rect = document.querySelector('.topbar').getBoundingClientRect();
+      for (let x = Math.floor(rect.left + 180); x < rect.right - 150; x += 24) {
+        for (const y of [12, 22, 32]) {
+          const hit = document.elementFromPoint(x, y);
+          if (hit?.closest('.topbar') && !hit.closest('button, input, label, a, [role="button"], .vis-wrap, .wincontrols')) {
+            return { x: Math.floor(window.screenX + x), y: Math.floor(window.screenY + y) };
+          }
+        }
+      }
+      throw new Error('No verified noninteractive mouse point in test topbar');
+    })()`);
+    report.mousePoint = point;
+    return point;
   };
   const patch = async value => {
     const next = await run(`(async () => { window.cq.set(${JSON.stringify(value)}); return window.cq.getState(); })()`);
@@ -413,7 +431,49 @@ async function child() {
       await configure({ aim: aim('RightClick', 'hold', ['Ctrl']) }); assert.equal((await state()).keybinds.aim.pc.key, 'RightClick');
       await send('down', [0x86]); await pause(150); assert.equal((await dom()).primary, 'block'); await send('up', [0x86]);
     });
-    await check('positive mouse remap from native hook', async () => skip('No global mouse clicks/movement injected; positive path requires controlled physical input or separate desktop.'));
+    await check('Win32 RightClick hold hides overlay and counts one native down/up', async () => {
+      await configure({ aim: aim('RightClick', 'hold') });
+      const native = Object.entries(require.cache).find(([file]) => file.endsWith('crosshairq.node'))?.[1].exports;
+      const before = native.getMouseSnapshot().right;
+      const point = await mousePoint();
+      await send('mouse-down', [1], point); await display('none');
+      assert.equal(native.getMouseSnapshot().right.pressed, true, 'native right button remains held');
+      await pause(150); assert.equal((await dom()).primary, 'none', 'mouse hold remains hidden');
+      await send('mouse-up', [1]); await display('block');
+      const after = native.getMouseSnapshot().right;
+      assert.equal(after.downCount, before.downCount + 1, 'exactly one native RIGHTDOWN');
+      assert.equal(after.upCount, before.upCount + 1, 'exactly one native RIGHTUP');
+      assert.deepEqual((await dom()).actions.filter(e => e.action === 'aim').map(e => e.pressed), [true, false], 'one semantic edge per mouse down/up');
+    });
+    await check('Win32 RightClick zero-delay taps toggle once each', async () => {
+      await configure({ aim: aim('RightClick', 'toggle') });
+      const point = await mousePoint();
+      for (let i = 0; i < 2; i++) {
+        const reply = await send('mouse-tap-fast', [1], point);
+        assert.ok(Number.isFinite(reply.elapsedMs) && reply.elapsedMs >= 0, 'driver records mouse batch duration');
+        await display(i === 0 ? 'none' : 'block');
+      }
+      assert.equal((await dom()).actions.filter(e => e.action === 'aim' && e.pressed).length, 2, 'no duplicated or lost short mouse clicks');
+    });
+    await check('Win32 LeftClick fire hold and keyboard reload reach overlay once', async () => {
+      await configure({ aim: aim('F23', 'hold', [], false),
+        fire: { enabled: true, action: 'fire', pressType: 'hold', pc: { key: 'LeftClick', modifiers: [], platform: 'PC' }, controller: null },
+        reload: { enabled: true, action: 'reload', pressType: 'press', pc: { key: 'F23', modifiers: [], platform: 'PC' }, controller: null } });
+      const native = Object.entries(require.cache).find(([file]) => file.endsWith('crosshairq.node'))?.[1].exports;
+      const before = native.getMouseSnapshot().left;
+      const point = await mousePoint();
+      await send('mouse-down', [0], point);
+      await wait(async () => (await dom()).actions.some(e => e.action === 'fire' && e.pressed), 'fire mouse press');
+      await send('tap', [0x86]);
+      await wait(async () => (await dom()).actions.some(e => e.action === 'reload' && e.pressed), 'reload keyboard press');
+      await send('mouse-up', [0]);
+      await wait(async () => (await dom()).actions.some(e => e.action === 'fire' && !e.pressed), 'fire mouse release');
+      const after = native.getMouseSnapshot().left;
+      assert.equal(after.downCount, before.downCount + 1, 'exactly one native LEFTDOWN');
+      assert.equal(after.upCount, before.upCount + 1, 'exactly one native LEFTUP');
+      assert.deepEqual((await dom()).actions.filter(e => e.action === 'fire').map(e => e.pressed), [true, false], 'fire has one hold cycle');
+      assert.deepEqual((await dom()).actions.filter(e => e.action === 'reload').map(e => e.pressed), [true], 'reload has one press');
+    });
     await check('startup/login hooks untouched; userData and sessionData isolated', async () => {
       assert.deepEqual(loginCalls, []); assert.equal(app.getPath('userData'), data); assert.equal(app.getPath('sessionData'), session);
       assert.equal((await run('window.cq.getUpdateState()')).reason, 'development');

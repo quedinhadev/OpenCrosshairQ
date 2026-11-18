@@ -29,6 +29,7 @@
     }, true);
     document.addEventListener('change', (e) => {
       if (!e.target?.disabled && e.target?.matches?.('select, input[type="checkbox"], input[type="color"]')) cue('toggle');
+      else if (!e.target?.disabled && e.target?.matches?.('input[type="number"]')) cue('step');
     });
     let lastStep = 0;
     document.addEventListener('input', (e) => {

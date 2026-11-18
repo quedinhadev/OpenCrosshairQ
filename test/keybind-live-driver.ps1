@@ -8,9 +8,16 @@ public static class CQTestKeys {
   [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort vk, scan; public uint flags, time; public UIntPtr extra; }
   [StructLayout(LayoutKind.Explicit)] public struct UNION { [FieldOffset(0)] public MOUSEINPUT mouse; [FieldOffset(0)] public KEYBDINPUT keyboard; }
   [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public UNION data; }
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int x, y; }
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int left, top, right, bottom; }
   [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, INPUT[] inputs, int size);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT point);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT rect);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr handle);
+  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr handle, int command);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint process);
   [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int key);
   [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint type);
@@ -21,6 +28,23 @@ public static class CQTestKeys {
     input.data.keyboard.flags = (up ? 2u : 0u) | (vk == 0xa3 || vk == 0xa5 ? 1u : 0u);
     if (SendInput(1, new [] { input }, Marshal.SizeOf(typeof(INPUT))) != 1)
       throw new InvalidOperationException("SendInput rejected: " + Marshal.GetLastWin32Error());
+  }
+  public static void Mouse(int button, bool up) {
+    uint down = button == 0 ? 0x02u : button == 1 ? 0x08u : 0x20u;
+    var input = new INPUT { type = 0 };
+    input.data.mouse.flags = up ? down << 1 : down;
+    if (SendInput(1, new [] { input }, Marshal.SizeOf(typeof(INPUT))) != 1)
+      throw new InvalidOperationException("SendInput mouse rejected: " + Marshal.GetLastWin32Error());
+  }
+  public static double MouseTap(int button) {
+    var down = new INPUT { type = 0 };
+    down.data.mouse.flags = button == 0 ? 0x02u : button == 1 ? 0x08u : 0x20u;
+    var up = down;
+    up.data.mouse.flags = down.data.mouse.flags << 1;
+    var clock = System.Diagnostics.Stopwatch.StartNew();
+    if (SendInput(2, new [] { down, up }, Marshal.SizeOf(typeof(INPUT))) != 2)
+      throw new InvalidOperationException("SendInput mouse batch rejected: " + Marshal.GetLastWin32Error());
+    return clock.Elapsed.TotalMilliseconds;
   }
   public static double Tap(int[] keys) {
     var inputs = new INPUT[keys.Length * 2];
@@ -39,10 +63,16 @@ public static class CQTestKeys {
   }
 }
 '@
-# No letters, navigation, Windows key, mouse events or clickable input.
+# Keyboard whitelist excludes letters, navigation and Windows key. Mouse input
+# is opt-in per operation, restricted to a verified safe point in the test UI.
 $allowed = @(0x84, 0x85, 0x86, 0x87, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5)
 $held = [System.Collections.Generic.List[int]]::new()
+$heldMouse = [System.Collections.Generic.List[int]]::new()
+$cursorBeforeMouse = [CQTestKeys+POINT]::new()
+$restoreCursor = $false
 function Release-Owned {
+  for ($i = $heldMouse.Count - 1; $i -ge 0; $i--) { [CQTestKeys]::Mouse($heldMouse[$i], $true); $heldMouse.RemoveAt($i) }
+  if ($restoreCursor) { [void][CQTestKeys]::SetCursorPos($cursorBeforeMouse.x, $cursorBeforeMouse.y); $script:restoreCursor = $false }
   for ($i = $held.Count - 1; $i -ge 0; $i--) { [CQTestKeys]::Send($held[$i], $true); $held.RemoveAt($i) }
 }
 @{ ready = $true; pid = $PID; input = 'synthetic SendInput' } | ConvertTo-Json -Compress
@@ -52,20 +82,55 @@ try {
     try {
       $command = $line | ConvertFrom-Json
       $elapsed = $null
-      if ($command.op -notin @('down', 'up', 'repeat', 'tap', 'tap-fast', 'release')) { throw 'Unknown operation' }
-      foreach ($key in $command.keys) { if ([int]$key -notin $allowed) { throw 'Key outside test whitelist' } }
+      $mouseOp = $command.op -in @('mouse-down', 'mouse-up', 'mouse-tap', 'mouse-tap-fast')
+      if ($command.op -notin @('down', 'up', 'repeat', 'tap', 'tap-fast', 'release', 'mouse-down', 'mouse-up', 'mouse-tap', 'mouse-tap-fast')) { throw 'Unknown operation' }
+      if ($mouseOp) {
+        if (@($command.keys).Count -ne 1 -or [int]$command.keys[0] -notin @(0, 1, 2)) { throw 'Mouse operation requires one whitelisted button' }
+      } else {
+        foreach ($key in $command.keys) { if ([int]$key -notin $allowed) { throw 'Key outside test whitelist' } }
+      }
       if ($command.op -eq 'release') { Release-Owned }
       else {
         $foreground = [CQTestKeys]::GetForegroundWindow()
         [UInt32]$foregroundProcess = 0
         [void][CQTestKeys]::GetWindowThreadProcessId($foreground, [ref]$foregroundProcess)
-        if (-not $AllowBackgroundKeys -and $foregroundProcess -ne $TargetProcess) {
-          [void][CQTestKeys]::SetForegroundWindow([IntPtr]::new([Int64]$TargetWindow))
-          Start-Sleep -Milliseconds 100
+        if ((-not $AllowBackgroundKeys -or $mouseOp) -and $foregroundProcess -ne $TargetProcess) {
+          $target = [IntPtr]::new([Int64]$TargetWindow)
+          [void][CQTestKeys]::ShowWindowAsync($target, 9)
+          [void][CQTestKeys]::BringWindowToTop($target)
+          [void][CQTestKeys]::SetForegroundWindow($target)
+          Start-Sleep -Milliseconds 150
           $foreground = [CQTestKeys]::GetForegroundWindow()
           [void][CQTestKeys]::GetWindowThreadProcessId($foreground, [ref]$foregroundProcess)
         }
-        if (-not $AllowBackgroundKeys -and $foregroundProcess -ne $TargetProcess) { throw "SKIP: foreground PID $foregroundProcess (handle $foreground) differs from test PID $TargetProcess (UI handle $TargetWindow); no input sent" }
+        if ((-not $AllowBackgroundKeys -or $mouseOp) -and $foregroundProcess -ne $TargetProcess) { throw "SKIP: foreground PID $foregroundProcess (handle $foreground) differs from test PID $TargetProcess (UI handle $TargetWindow); no input sent" }
+        if ($mouseOp) {
+          $button = [int]$command.keys[0]
+          $vk = @(1, 2, 4)[$button]
+          if ([CQTestKeys]::GetAsyncKeyState($vk) -lt 0 -and -not $heldMouse.Contains($button)) { throw "SKIP: mouse button $button already held; no input sent" }
+          if ($command.op -ne 'mouse-up') {
+            if ($null -eq $command.point) { throw 'Mouse operation requires a safe test point' }
+            $rect = [CQTestKeys+RECT]::new()
+            if (-not [CQTestKeys]::GetWindowRect([IntPtr]::new([Int64]$TargetWindow), [ref]$rect)) { throw 'Cannot read test window bounds' }
+            $x = [int]$command.point.x; $y = [int]$command.point.y
+            if ($x -le $rect.left -or $x -ge $rect.right -or $y -le $rect.top -or $y -ge $rect.bottom) { throw 'Mouse point outside test window' }
+            if (-not $restoreCursor) {
+              if (-not [CQTestKeys]::GetCursorPos([ref]$cursorBeforeMouse)) { throw 'Cannot preserve cursor position' }
+              $script:restoreCursor = $true
+            }
+            if (-not [CQTestKeys]::SetCursorPos($x, $y)) { throw 'Cannot position cursor inside test window' }
+            Start-Sleep -Milliseconds 40
+          }
+          if ($command.op -eq 'mouse-down') {
+            if (-not $heldMouse.Contains($button)) { [CQTestKeys]::Mouse($button, $false); $heldMouse.Add($button) }
+          } elseif ($command.op -eq 'mouse-up') {
+            if ($heldMouse.Contains($button)) { [CQTestKeys]::Mouse($button, $true); [void]$heldMouse.Remove($button) }
+          } else {
+            if ($command.op -eq 'mouse-tap') { [CQTestKeys]::Mouse($button, $false); Start-Sleep -Milliseconds 140; [CQTestKeys]::Mouse($button, $true) }
+            else { $elapsed = [CQTestKeys]::MouseTap($button) }
+          }
+          if ($heldMouse.Count -eq 0 -and $restoreCursor) { [void][CQTestKeys]::SetCursorPos($cursorBeforeMouse.x, $cursorBeforeMouse.y); $script:restoreCursor = $false }
+        }
         if ($command.op -eq 'repeat') {
           if (@($command.keys).Count -eq 0) { throw 'repeat requires test-held keys' }
           foreach ($key in $command.keys) { if (-not $held.Contains([int]$key)) { throw 'repeat requires test-held keys' } }
@@ -96,7 +161,7 @@ try {
           }
         }
       }
-      @{ id = $command.id; ok = $true; held = @($held); elapsedMs = $elapsed } | ConvertTo-Json -Compress
+      @{ id = $command.id; ok = $true; held = @($held); heldMouse = @($heldMouse); elapsedMs = $elapsed } | ConvertTo-Json -Compress
     } catch {
       $message = $_.Exception.Message
       Release-Owned

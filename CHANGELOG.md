@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.2.3
+
+### Atalhos
+
+- Corrige Mirar, Atirar e outras ações por mouse quando o Chromium substitui o registro Raw Input do processo.
+- Mouse usa hook passivo `WH_MOUSE_LL` como fonte única dos botões; Raw Input não duplica contadores.
+- Teste integrado cobre `RightClick` hold/toggle, taps sem atraso, `LeftClick` fire e reload, com 27 PASS e nenhum SKIP.
+
+### Interface
+
+- Fonte DM Sans local na interface e no Criador, incluindo licença SIL OFL; funciona offline.
+- Feedback tátil curto para números, sliders, toggles e botões, mantido discreto e desativado por padrão.
+
 ## v0.2.2
 
 ### Atalhos

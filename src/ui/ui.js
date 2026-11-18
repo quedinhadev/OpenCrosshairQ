@@ -122,15 +122,16 @@
       if (!audioCtx || audioCtx.state === 'closed') audioCtx = new AudioCtx();
       const ctx = audioCtx;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-      const tones = { click: [720, 380, .035, .025], toggle: [440, 660, .06, .025], success: [520, 880, .08, .035], error: [260, 160, .09, .025], step: [500, 450, .025, .012] };
+      const tones = { click: [720, 380, .03, .025], toggle: [440, 660, .055, .025], success: [520, 880, .08, .035], error: [260, 160, .09, .025], step: [500, 450, .025, .012] };
       const [from, to, duration, volume] = tones[type] || tones.click;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       const now = ctx.currentTime;
-      osc.type = 'sine';
+      osc.type = ['click', 'toggle', 'step'].includes(type) ? 'triangle' : 'sine';
       osc.frequency.setValueAtTime(from, now);
       osc.frequency.exponentialRampToValueAtTime(to, now + duration);
-      gain.gain.setValueAtTime(volume, now);
+      gain.gain.setValueAtTime(.0001, now);
+      gain.gain.exponentialRampToValueAtTime(volume, now + .003);
       gain.gain.exponentialRampToValueAtTime(.001, now + duration);
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -152,6 +153,7 @@
     document.addEventListener('change', (e) => {
       if (e.target?.disabled || e.target?.id === 'optionSounds') return;
       if (e.target?.matches?.('select, input[type="checkbox"], input[type="radio"], input[type="color"]')) playSfx('toggle');
+      else if (e.target?.matches?.('input[type="number"]')) playSfx('step');
     });
     let lastStepAt = -Infinity;
     document.addEventListener('input', (e) => {
