@@ -387,7 +387,7 @@ static napi_value start_mouse_input(napi_env env, napi_callback_info info) {
     ReleaseSRWLockExclusive(&input->lock);
   }
   ReleaseSRWLockExclusive(&mouse_lifecycle);
-  if (error) return mouse_error(env, "Cannot start Raw Input mouse", error);
+  if (error) return mouse_error(env, "Cannot start mouse input", error);
   NAPI(napi_get_undefined(env, &result));
   return result;
 }

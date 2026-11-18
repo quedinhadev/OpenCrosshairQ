@@ -126,14 +126,14 @@ async function child() {
     console.log(`${entry.status}: ${name}`);
   };
   const skip = message => { const error = new Error(message); error.skip = true; throw error; };
-  const send = async (op, keys = [], point = null) => {
+  const send = async (op, keys = [], point = null, fault = null, allowFailure = false) => {
     if (op !== 'release' && (process.env.CQ_TEST_ALLOW_BACKGROUND_KEYS !== '1' || op.startsWith('mouse-'))) { ui.show(); ui.focus(); await wait(() => ui.isFocused(), 'test UI foreground'); }
     const id = ++request;
     const reply = new Promise((resolve, reject) => waiting.set(id, { resolve, reject }));
-    driver.stdin.write(JSON.stringify({ id, op, keys, point }) + '\n');
+    driver.stdin.write(JSON.stringify({ id, op, keys, point, fault }) + '\n');
     const response = await reply;
-    report.inputLog.push({ id, op, keys, response });
-    if (!response.ok) { if (response.skip) skip(response.error); throw new Error(response.error); }
+    report.inputLog.push({ id, op, keys, fault, response });
+    if (!response.ok && !allowFailure) { if (response.skip) skip(response.error); throw new Error(response.error); }
     return response;
   };
   const mousePoint = async () => {
@@ -454,6 +454,22 @@ async function child() {
         await display(i === 0 ? 'none' : 'block');
       }
       assert.equal((await dom()).actions.filter(e => e.action === 'aim' && e.pressed).length, 2, 'no duplicated or lost short mouse clicks');
+    });
+    await check('partial mouse batch failure releases owned button and permits fresh press', async () => {
+      await configure({ aim: aim('RightClick', 'toggle') });
+      const native = Object.entries(require.cache).find(([file]) => file.endsWith('crosshairq.node'))?.[1].exports;
+      const before = native.getMouseSnapshot().right;
+      const point = await mousePoint();
+      const failure = await send('mouse-tap-fast', [1], point, 'partial-up', true);
+      assert.equal(failure.ok, false, 'injected DOWN without UP is reported');
+      assert.match(failure.error, /1 of 2 events/);
+      await wait(() => native.getMouseSnapshot().right.pressed === false, 'cleanup releases partial mouse DOWN');
+      await display('none');
+      const after = native.getMouseSnapshot().right;
+      assert.equal(after.downCount, before.downCount + 1, 'partial batch owns exactly one DOWN');
+      assert.equal(after.upCount, before.upCount + 1, 'catch cleanup supplies exactly one UP');
+      await send('mouse-tap-fast', [1], point); await display('block');
+      assert.equal((await dom()).actions.filter(e => e.action === 'aim' && e.pressed).length, 2, 'fresh press works after partial failure cleanup');
     });
     await check('Win32 LeftClick fire hold and keyboard reload reach overlay once', async () => {
       await configure({ aim: aim('F23', 'hold', [], false),

@@ -36,14 +36,13 @@ public static class CQTestKeys {
     if (SendInput(1, new [] { input }, Marshal.SizeOf(typeof(INPUT))) != 1)
       throw new InvalidOperationException("SendInput mouse rejected: " + Marshal.GetLastWin32Error());
   }
-  public static double MouseTap(int button) {
+  public static double MouseTap(int button, bool partial, out uint sent) {
     var down = new INPUT { type = 0 };
     down.data.mouse.flags = button == 0 ? 0x02u : button == 1 ? 0x08u : 0x20u;
     var up = down;
     up.data.mouse.flags = down.data.mouse.flags << 1;
     var clock = System.Diagnostics.Stopwatch.StartNew();
-    if (SendInput(2, new [] { down, up }, Marshal.SizeOf(typeof(INPUT))) != 2)
-      throw new InvalidOperationException("SendInput mouse batch rejected: " + Marshal.GetLastWin32Error());
+    sent = SendInput(partial ? 1u : 2u, new [] { down, up }, Marshal.SizeOf(typeof(INPUT)));
     return clock.Elapsed.TotalMilliseconds;
   }
   public static double Tap(int[] keys) {
@@ -86,6 +85,7 @@ try {
       if ($command.op -notin @('down', 'up', 'repeat', 'tap', 'tap-fast', 'release', 'mouse-down', 'mouse-up', 'mouse-tap', 'mouse-tap-fast')) { throw 'Unknown operation' }
       if ($mouseOp) {
         if (@($command.keys).Count -ne 1 -or [int]$command.keys[0] -notin @(0, 1, 2)) { throw 'Mouse operation requires one whitelisted button' }
+        if ($null -ne $command.fault -and ($command.fault -ne 'partial-up' -or $command.op -ne 'mouse-tap-fast')) { throw 'Fault injection only supports partial-up on mouse-tap-fast' }
       } else {
         foreach ($key in $command.keys) { if ([int]$key -notin $allowed) { throw 'Key outside test whitelist' } }
       }
@@ -122,12 +122,20 @@ try {
             Start-Sleep -Milliseconds 40
           }
           if ($command.op -eq 'mouse-down') {
-            if (-not $heldMouse.Contains($button)) { [CQTestKeys]::Mouse($button, $false); $heldMouse.Add($button) }
+            if (-not $heldMouse.Contains($button)) { $heldMouse.Add($button); [CQTestKeys]::Mouse($button, $false) }
           } elseif ($command.op -eq 'mouse-up') {
             if ($heldMouse.Contains($button)) { [CQTestKeys]::Mouse($button, $true); [void]$heldMouse.Remove($button) }
           } else {
-            if ($command.op -eq 'mouse-tap') { [CQTestKeys]::Mouse($button, $false); Start-Sleep -Milliseconds 140; [CQTestKeys]::Mouse($button, $true) }
-            else { $elapsed = [CQTestKeys]::MouseTap($button) }
+            if ($heldMouse.Contains($button)) { throw 'Mouse tap requires button not test-held' }
+            $heldMouse.Add($button)
+            if ($command.op -eq 'mouse-tap') {
+              [CQTestKeys]::Mouse($button, $false); Start-Sleep -Milliseconds 140; [CQTestKeys]::Mouse($button, $true)
+            } else {
+              [UInt32]$sent = 0
+              $elapsed = [CQTestKeys]::MouseTap($button, ($command.fault -eq 'partial-up'), [ref]$sent)
+              if ($sent -ne 2) { throw "SendInput mouse batch rejected: $sent of 2 events" }
+            }
+            [void]$heldMouse.Remove($button)
           }
           if ($heldMouse.Count -eq 0 -and $restoreCursor) { [void][CQTestKeys]::SetCursorPos($cursorBeforeMouse.x, $cursorBeforeMouse.y); $script:restoreCursor = $false }
         }
